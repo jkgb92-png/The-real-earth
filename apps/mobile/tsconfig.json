@@ -1,0 +1,11 @@
+{
+  "extends": "expo/tsconfig.base",
+  "compilerOptions": {
+    "strict": true,
+    "paths": {
+      "@the-real-earth/map-core": ["../../packages/map-core/src"],
+      "@the-real-earth/tile-cache": ["../../packages/tile-cache/src"],
+      "@the-real-earth/shaders": ["../../packages/shaders/src"]
+    }
+  }
+}

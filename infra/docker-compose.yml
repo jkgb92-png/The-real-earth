@@ -1,0 +1,58 @@
+version: "3.9"
+
+services:
+  # -----------------------------------------------------------------------
+  # FastAPI tile server + compositing backend
+  # -----------------------------------------------------------------------
+  tile-server:
+    build:
+      context: ..
+      dockerfile: backend/Dockerfile
+    ports:
+      - "8000:8000"
+    volumes:
+      - tile-store:/app/tiles
+    environment:
+      - TILE_STORE_PATH=/app/tiles
+      - GIBS_BASE_URL=https://gibs.earthdata.nasa.gov/wmts/epsg3857/best
+      - SAR_FEATURE_ENABLED=${SAR_FEATURE_ENABLED:-false}
+      - SAR_MODEL_PATH=/models/sar_model.pt
+      - COPERNICUS_CLIENT_ID=${COPERNICUS_CLIENT_ID:-}
+      - COPERNICUS_CLIENT_SECRET=${COPERNICUS_CLIENT_SECRET:-}
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+
+  # -----------------------------------------------------------------------
+  # Next.js web app
+  # -----------------------------------------------------------------------
+  web:
+    build:
+      context: ../apps/web
+      dockerfile: Dockerfile
+    ports:
+      - "3000:3000"
+    environment:
+      - NEXT_PUBLIC_TILE_SERVER_URL=http://tile-server:8000
+      - NEXT_PUBLIC_MAPBOX_TOKEN=${MAPBOX_ACCESS_TOKEN:-}
+    depends_on:
+      tile-server:
+        condition: service_healthy
+
+  # -----------------------------------------------------------------------
+  # Nginx reverse proxy (serves /api → tile-server, / → web)
+  # -----------------------------------------------------------------------
+  nginx:
+    image: nginx:1.27-alpine
+    ports:
+      - "80:80"
+    volumes:
+      - ./nginx.conf:/etc/nginx/conf.d/default.conf:ro
+    depends_on:
+      - tile-server
+      - web
+
+volumes:
+  tile-store:

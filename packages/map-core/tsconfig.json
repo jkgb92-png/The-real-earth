@@ -1,0 +1,19 @@
+{
+  "compilerOptions": {
+    "target": "ES2020",
+    "module": "CommonJS",
+    "moduleResolution": "node",
+    "declaration": true,
+    "outDir": "dist",
+    "rootDir": "src",
+    "strict": true,
+    "esModuleInterop": true,
+    "jsx": "react-native",
+    "paths": {
+      "@the-real-earth/shaders": ["../shaders/src"],
+      "@the-real-earth/tile-cache": ["../tile-cache/src"]
+    }
+  },
+  "include": ["src"],
+  "exclude": ["node_modules", "dist"]
+}
