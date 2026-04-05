@@ -1,0 +1,35 @@
+{
+  "name": "the-real-earth-mobile",
+  "version": "1.0.0",
+  "main": "expo-router/entry",
+  "scripts": {
+    "start": "expo start",
+    "android": "expo run:android",
+    "ios": "expo run:ios",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint src --ext .ts,.tsx"
+  },
+  "dependencies": {
+    "@the-real-earth/map-core": "*",
+    "@the-real-earth/tile-cache": "*",
+    "@the-real-earth/shaders": "*",
+    "@rnmapbox/maps": "^10.1.27",
+    "expo": "~51.0.0",
+    "expo-router": "~3.5.0",
+    "expo-sqlite": "~14.0.3",
+    "expo-file-system": "~17.0.1",
+    "expo-background-fetch": "~12.0.1",
+    "expo-task-manager": "~11.8.2",
+    "react": "18.2.0",
+    "react-native": "0.74.5",
+    "react-native-webview": "^13.10.2",
+    "react-native-device-info": "^11.1.0"
+  },
+  "devDependencies": {
+    "@babel/core": "^7.24.0",
+    "@types/react": "~18.2.79",
+    "typescript": "^5.4.0",
+    "eslint": "^8.57.0",
+    "eslint-config-expo": "~7.0.0"
+  }
+}

@@ -1,0 +1,24 @@
+{
+  "name": "the-real-earth",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Cross-platform Earth observation app — Web, iOS, Android",
+  "workspaces": [
+    "apps/mobile",
+    "apps/web",
+    "packages/map-core",
+    "packages/tile-cache",
+    "packages/shaders"
+  ],
+  "scripts": {
+    "mobile": "npm run dev --workspace=apps/mobile",
+    "web": "npm run dev --workspace=apps/web",
+    "build:web": "npm run build --workspace=apps/web",
+    "lint": "npm run lint --workspaces --if-present",
+    "typecheck": "npm run typecheck --workspaces --if-present"
+  },
+  "engines": {
+    "node": ">=18.0.0",
+    "npm": ">=9.0.0"
+  }
+}

@@ -1,0 +1,31 @@
+{
+  "name": "@the-real-earth/map-core",
+  "version": "0.1.0",
+  "description": "Shared Mapbox/CesiumJS map abstraction layer (React Native + Web)",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "files": [
+    "dist",
+    "src"
+  ],
+  "scripts": {
+    "build": "tsc",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@the-real-earth/shaders": "*",
+    "@the-real-earth/tile-cache": "*",
+    "react": "^18.2.0",
+    "react-native": "^0.74.0"
+  },
+  "peerDependencies": {
+    "@rnmapbox/maps": "^10.0.0",
+    "react": "^18.2.0",
+    "react-native": "^0.74.0"
+  },
+  "devDependencies": {
+    "typescript": "^5.4.0",
+    "@types/react": "^18.2.0",
+    "@types/react-native": "^0.73.0"
+  }
+}

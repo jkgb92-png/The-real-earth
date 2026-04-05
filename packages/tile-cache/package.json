@@ -1,0 +1,23 @@
+{
+  "name": "@the-real-earth/tile-cache",
+  "version": "0.1.0",
+  "description": "MBTiles SQLite tile cache with LRU eviction and stale-while-revalidate",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "files": [
+    "dist",
+    "src"
+  ],
+  "scripts": {
+    "build": "tsc",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "expo-sqlite": "^14.0.0",
+    "expo-file-system": "^17.0.0"
+  },
+  "devDependencies": {
+    "typescript": "^5.4.0",
+    "@types/react-native": "^0.73.0"
+  }
+}
