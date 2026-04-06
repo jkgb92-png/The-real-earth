@@ -136,7 +136,7 @@ class TestMedianComposite:
 
     def test_output_dtype_is_uint16(self, monkeypatch, tmp_path):
         tile = make_tile(r=500, g=500, b=500, nir=0)
-        monkeypatch.setattr("compositing.load_tile_as_array", lambda _: tile.copy())
+        monkeypatch.setattr("backend.compositing.load_tile_as_array", lambda _: tile.copy())
         paths = [str(tmp_path / f"{i}.tif") for i in range(3)]
         for p in paths:
             open(p, "w").close()
