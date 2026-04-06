@@ -22,7 +22,7 @@ interface Props {
 
 const AUTO_DISMISS_MS = 3000;
 
-export function HeroSplash({ onDismiss = () => {} }: Props) {
+export function HeroSplash({ onDismiss }: Props) {
   const [exiting, setExiting] = useState(false);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -30,7 +30,7 @@ export function HeroSplash({ onDismiss = () => {} }: Props) {
     if (exiting) return;
     setExiting(true);
     // Allow the CSS exit animation to play before unmounting
-    setTimeout(onDismiss, 600);
+    setTimeout(() => onDismiss?.(), 600);
   }
 
   // Auto-dismiss after inactivity
