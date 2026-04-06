@@ -1,18 +1,22 @@
 /** @type {import('next').NextConfig} */
+
+// When NEXT_OUTPUT_MODE=standalone the app is built for Docker/Cloud Run
+// (no basePath, standalone server). The default is 'export' for GitHub Pages.
+const isStandalone = process.env.NEXT_OUTPUT_MODE === 'standalone';
+
 const nextConfig = {
-  output: 'export',
-  trailingSlash: true,
-  basePath: '/The-real-earth',
-  assetPrefix: '/The-real-earth/',
+  output: isStandalone ? 'standalone' : 'export',
+  ...(isStandalone
+    ? {}
+    : {
+        trailingSlash: true,
+        basePath: '/The-real-earth',
+        assetPrefix: '/The-real-earth/',
+      }),
   reactStrictMode: true,
   images: {
     unoptimized: true,
   },
-  transpilePackages: [
-    '@the-real-earth/map-core',
-    '@the-real-earth/tile-cache',
-    '@the-real-earth/shaders',
-  ],
 };
 
 module.exports = nextConfig;
