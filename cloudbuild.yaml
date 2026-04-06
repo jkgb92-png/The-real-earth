@@ -1,0 +1,33 @@
+steps:
+  # Build the web Docker image (build context is apps/web/)
+  - name: 'gcr.io/cloud-builders/docker'
+    id: 'build-web'
+    args:
+      - build
+      - -t
+      - gcr.io/$PROJECT_ID/web:$COMMIT_SHA
+      - -t
+      - gcr.io/$PROJECT_ID/web:latest
+      - apps/web
+
+  # Build the backend Docker image (build context is repo root)
+  - name: 'gcr.io/cloud-builders/docker'
+    id: 'build-backend'
+    args:
+      - build
+      - -t
+      - gcr.io/$PROJECT_ID/backend:$COMMIT_SHA
+      - -t
+      - gcr.io/$PROJECT_ID/backend:latest
+      - -f
+      - backend/Dockerfile
+      - .
+
+images:
+  - gcr.io/$PROJECT_ID/web:$COMMIT_SHA
+  - gcr.io/$PROJECT_ID/web:latest
+  - gcr.io/$PROJECT_ID/backend:$COMMIT_SHA
+  - gcr.io/$PROJECT_ID/backend:latest
+
+options:
+  logging: CLOUD_LOGGING_ONLY
