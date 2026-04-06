@@ -1,11 +1,14 @@
 /**
  * packages/shaders/src/rayleigh_atmosphere.glsl
  *
- * Rayleigh scattering atmospheric fragment shader for CesiumJS PostProcessStage.
+ * Enhanced Rayleigh scattering atmospheric fragment shader for CesiumJS PostProcessStage.
  *
  * Simulates how sunlight scatters through the atmosphere at low altitudes,
- * producing the "Blue Marble" halo effect that makes the Earth look premium
- * from orbit.
+ * producing:
+ *  - The "Blue Marble" atmospheric haze from orbit
+ *  - Limb brightening: an iconic bright-blue halo at the planet horizon
+ *  - Chromatic sunset dispersion: warm reddish-orange tones at low altitudes
+ *    along sunrise/sunset terminator zones
  *
  * Usage (CesiumJS):
  *   import { rayleighShader } from '@the-real-earth/shaders';
@@ -35,12 +38,27 @@ void main() {
     // with altitude.  At sea level scatter ≈ 1.0; at 100 km it is ~0.0.
     float scatter = exp(-altitude / 8500.0);
 
-    // Dominant scattering wavelength — blue-shifted ambient sky colour.
-    vec3 sky = vec3(0.18, 0.36, 0.72);
+    // Primary blue-sky scatter colour.
+    vec3 blueScatter = vec3(0.18, 0.36, 0.72);
 
-    // Blend the ground colour with atmospheric haze proportional to scatter.
-    // The 0.4 factor keeps the land/sea colours visible from low orbit.
-    color.rgb = mix(color.rgb, sky, scatter * 0.4);
+    // ── Limb brightening ─────────────────────────────────────────────────────
+    // Pixels near the screen edge correspond to the planet's limb (horizon).
+    // Real atmospheres brighten there because light travels a longer path.
+    vec2 uv = v_textureCoordinates * 2.0 - 1.0;
+    float r2 = dot(uv, uv);
+    float limb = smoothstep(0.5, 1.0, r2) * 0.5;
+
+    // ── Chromatic sunset dispersion ──────────────────────────────────────────
+    // At low altitudes the sun near the horizon scatters shorter wavelengths
+    // away, leaving the warm reddish-orange glow of sunrise/sunset.
+    float sunsetFactor = scatter * (1.0 - abs(uv.y)) * 0.6;
+    vec3 sunsetColor = vec3(0.85, 0.45, 0.12);
+
+    // Blend primary atmosphere toward sunset colour proportionally.
+    vec3 atmo = mix(blueScatter, sunsetColor, clamp(sunsetFactor * 0.4, 0.0, 0.5));
+
+    // Apply: ground colour + atmospheric haze (scatter) + limb halo (limb).
+    color.rgb = mix(color.rgb, atmo, scatter * 0.38 + limb * 0.25);
 
     out_FragColor = color;
 }
