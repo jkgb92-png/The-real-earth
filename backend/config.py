@@ -10,6 +10,9 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8")
 
+    # CORS — comma-separated list of allowed origins; "*" allows all (dev default)
+    cors_origins: str = "*"
+
     # Tile storage
     tile_store_path: str = "tiles"
 
