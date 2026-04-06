@@ -93,7 +93,7 @@ function buildTerminatorGeoJSON(date: Date): GeoJSON.FeatureCollection {
 
   // Solar declination (degrees)
   const declination =
-    -23.45 * Math.cos((360 / 365) * (dayOfYear + 10) * (Math.PI / 180));
+    -23.45 * Math.cos((360 / 365.25) * (dayOfYear + 10) * (Math.PI / 180));
 
   // UTC fractional hours → Greenwich Hour Angle → subsolar longitude
   const utcHours = date.getUTCHours() + date.getUTCMinutes() / 60 + date.getUTCSeconds() / 3600;
@@ -103,19 +103,22 @@ function buildTerminatorGeoJSON(date: Date): GeoJSON.FeatureCollection {
 
   // Build terminator line: for each longitude step, find latitude where
   // solar zenith angle = 90°.
+  // Formula: tan(lat) = -cos(HA) / tan(decl), where HA = lon - subsolarLon
+  function terminatorLatitude(lonRad: number): number {
+    if (Math.abs(declRad) < 1e-9) {
+      // Equinox: terminator is a meridian
+      return lonRad > -Math.PI / 2 && lonRad < Math.PI / 2 ? 90 : -90;
+    }
+    return Math.atan(-Math.cos(lonRad) / Math.tan(declRad)) * (180 / Math.PI);
+  }
+
   const STEPS = 361;
   const coords: Array<[number, number]> = [];
 
   for (let i = 0; i < STEPS; i++) {
     const lon = -180 + (360 * i) / (STEPS - 1);
     const lonRad = (lon - subsolarLon) * (Math.PI / 180);
-    // cos(zenith) = sin(lat)*sin(decl) + cos(lat)*cos(decl)*cos(HA) = 0
-    // → tan(lat) = -cos(HA) / tan(decl)
-    const lat =
-      Math.abs(declRad) < 1e-9
-        ? (lonRad > -Math.PI / 2 && lonRad < Math.PI / 2 ? 90 : -90)
-        : Math.atan(-Math.cos(lonRad) / Math.tan(declRad)) * (180 / Math.PI);
-    coords.push([lon, lat]);
+    coords.push([lon, terminatorLatitude(lonRad)]);
   }
 
   // Determine if the north or south pole is in night
@@ -180,7 +183,9 @@ export function EarthWebMap(): React.ReactElement {
 
     if (debounceRef.current) clearTimeout(debounceRef.current);
     debounceRef.current = setTimeout(() => {
-      console.debug('[EarthWebMap] viewport', { z, longitude, latitude });
+      if (process.env.NODE_ENV === 'development') {
+        console.debug('[EarthWebMap] viewport', { z, longitude, latitude });
+      }
     }, DEBOUNCE_MS);
   }, []);
 

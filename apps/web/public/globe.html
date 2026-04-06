@@ -197,7 +197,7 @@
         const res = await fetch(ISS_API);
         if (!res.ok) return;
         const d = await res.json();
-        const altitude = (d.altitude || 420) * 1000; // km → m
+        const altitude = (d.altitude != null ? d.altitude : 420) * 1000; // km → m
         const pos = Cesium.Cartesian3.fromDegrees(d.longitude, d.latitude, altitude);
         const now = Cesium.JulianDate.now();
         issPositions.addSample(now, pos);

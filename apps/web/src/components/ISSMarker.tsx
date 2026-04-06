@@ -5,7 +5,7 @@
  *
  * Fetches and displays the ISS live position on the Mapbox map.
  *
- * - Polls open-notify.org every 5 s (free, no API key required)
+ * - Polls wheretheiss.at every 5 s (free, no API key required)
  * - Renders as an animated SVG pulsing ring via a Mapbox Marker
  * - Shows a tooltip card with altitude, speed, and UTC time
  *

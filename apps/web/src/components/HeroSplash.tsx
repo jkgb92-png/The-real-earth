@@ -42,8 +42,9 @@ export function HeroSplash({ onDismiss }: Props): React.ReactElement {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Reset auto-dismiss timer on any interaction
+  // Reset auto-dismiss timer on any interaction (only if not already exiting)
   function resetTimer() {
+    if (exiting) return;
     if (timerRef.current) clearTimeout(timerRef.current);
     timerRef.current = setTimeout(dismiss, AUTO_DISMISS_MS);
   }

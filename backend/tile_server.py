@@ -139,7 +139,7 @@ def _compute_terminator_geojson() -> dict:
 
     # Solar declination (degrees), accurate to ~0.5°
     declination = -23.45 * math.cos(
-        math.radians((360.0 / 365.0) * (day_of_year + 10))
+        math.radians((360.0 / 365.25) * (day_of_year + 10))
     )
     decl_rad = math.radians(declination)
 
@@ -155,6 +155,9 @@ def _compute_terminator_geojson() -> dict:
             # Equinox: terminator is a meridian; north/south depends on HA
             lat = 90.0 if math.cos(hour_angle_rad) < 0 else -90.0
         else:
+            # Derived from solar zenith = 90°:
+            # cos(zenith) = sin(lat)*sin(decl) + cos(lat)*cos(decl)*cos(HA) = 0
+            # → tan(lat) = -cos(HA) / tan(decl)
             lat = math.degrees(
                 math.atan(-math.cos(hour_angle_rad) / math.tan(decl_rad))
             )
@@ -174,7 +177,7 @@ def _compute_terminator_geojson() -> dict:
                 "geometry": {"type": "Polygon", "coordinates": [polygon]},
                 "properties": {
                     "declination_deg": round(declination, 4),
-                    "subsolar_lon": round(subsolar_lon % 360 - 180, 4),
+                    "subsolar_lon": round((subsolar_lon % 360 + 360) % 360 - 180, 4),
                     "computed_utc": time.strftime("%H:%M:%S", now),
                 },
             }
