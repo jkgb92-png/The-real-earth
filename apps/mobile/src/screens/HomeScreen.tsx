@@ -1,11 +1,14 @@
 /**
  * apps/mobile/src/screens/HomeScreen.tsx
  *
- * Main screen — Mapbox native map with a floating button to toggle
- * the CesiumJS 3D Globe view.
+ * Main screen — Mapbox native map with:
+ *  - LayerSheet for toggling map layers (long-press or "Layers" button)
+ *  - Mode toggle (map ↔ globe)
+ *  - Haptic feedback on layer toggle and mode switch
+ *  - Offline pack download modal
  */
 
-import React, { useState } from 'react';
+import React, { useCallback, useState } from 'react';
 import {
   Platform,
   Pressable,
@@ -16,6 +19,21 @@ import {
 } from 'react-native';
 import { EarthMapView, GlobeView } from '@the-real-earth/map-core';
 import { OfflinePackModal } from '../components/OfflinePackModal';
+import { LayerSheet, LayerState } from '../components/LayerSheet';
+
+// Haptics — graceful degradation if expo-haptics is unavailable
+let Haptics: { impactAsync: (style: string) => Promise<void>; ImpactFeedbackStyle: { Medium: string } } | null = null;
+try {
+  Haptics = require('expo-haptics');
+} catch {
+  Haptics = null;
+}
+
+function hapticImpact() {
+  if (Haptics) {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => {});
+  }
+}
 
 const TILE_SERVER_URL = process.env.EXPO_PUBLIC_TILE_SERVER_URL ?? 'http://localhost:8000';
 const MAPBOX_TOKEN = process.env.EXPO_PUBLIC_MAPBOX_TOKEN ?? '';
@@ -24,6 +42,23 @@ const CESIUM_TOKEN = process.env.EXPO_PUBLIC_CESIUM_ION_TOKEN ?? '';
 export function HomeScreen(): React.ReactElement {
   const [mode, setMode] = useState<'map' | 'globe'>('map');
   const [showOfflineModal, setShowOfflineModal] = useState(false);
+  const [showLayers, setShowLayers] = useState(false);
+  const [layers, setLayers] = useState<LayerState>({
+    sentinel: true,
+    terminator: true,
+    iss: true,
+    clouds: false,
+  });
+
+  const toggleMode = useCallback(() => {
+    hapticImpact();
+    setMode((m) => (m === 'map' ? 'globe' : 'map'));
+  }, []);
+
+  const handleLayerToggle = useCallback((key: keyof LayerState) => {
+    hapticImpact();
+    setLayers((prev) => ({ ...prev, [key]: !prev[key] }));
+  }, []);
 
   return (
     <SafeAreaView style={styles.container}>
@@ -38,17 +73,27 @@ export function HomeScreen(): React.ReactElement {
         <GlobeView tileServerUrl={TILE_SERVER_URL} cesiumIonToken={CESIUM_TOKEN} />
       )}
 
-      {/* Mode toggle */}
+      {/* Top-right controls */}
       <View style={styles.controls}>
+        {/* Mode toggle */}
         <Pressable
           style={[styles.button, mode === 'globe' && styles.buttonActive]}
-          onPress={() => setMode((m) => (m === 'map' ? 'globe' : 'map'))}
+          onPress={toggleMode}
         >
           <Text style={styles.buttonText}>
             {mode === 'map' ? '🌐 Globe' : '🗺️ Map'}
           </Text>
         </Pressable>
 
+        {/* Layer controls */}
+        <Pressable
+          style={[styles.button, showLayers && styles.buttonActive]}
+          onPress={() => setShowLayers(true)}
+        >
+          <Text style={styles.buttonText}>🗂 Layers</Text>
+        </Pressable>
+
+        {/* Offline download */}
         <Pressable
           style={styles.button}
           onPress={() => setShowOfflineModal(true)}
@@ -57,6 +102,23 @@ export function HomeScreen(): React.ReactElement {
         </Pressable>
       </View>
 
+      {/* Active layer indicator pills (bottom) */}
+      <View style={styles.layerPills}>
+        {layers.sentinel   && <View style={[styles.pill, { borderColor: '#f59e0b44' }]}><Text style={[styles.pillText, { color: '#f59e0b' }]}>📡 Sentinel</Text></View>}
+        {layers.terminator && <View style={[styles.pill, { borderColor: '#a78bfa44' }]}><Text style={[styles.pillText, { color: '#a78bfa' }]}>🌙 Day/Night</Text></View>}
+        {layers.iss        && <View style={[styles.pill, { borderColor: '#34d39944' }]}><Text style={[styles.pillText, { color: '#34d399' }]}>🛰 ISS</Text></View>}
+        {layers.clouds     && <View style={[styles.pill, { borderColor: '#6dd5fa44' }]}><Text style={[styles.pillText, { color: '#6dd5fa' }]}>☁ Clouds</Text></View>}
+      </View>
+
+      {/* Layer sheet */}
+      <LayerSheet
+        visible={showLayers}
+        layers={layers}
+        onToggle={handleLayerToggle}
+        onClose={() => setShowLayers(false)}
+      />
+
+      {/* Offline modal */}
       {showOfflineModal && (
         <OfflinePackModal
           tileServerUrl={TILE_SERVER_URL}
@@ -79,19 +141,42 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   button: {
-    backgroundColor: 'rgba(255,255,255,0.15)',
+    backgroundColor: 'rgba(8,12,30,0.82)',
     borderRadius: 8,
     paddingHorizontal: 14,
     paddingVertical: 10,
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.25)',
+    borderColor: 'rgba(80,160,255,0.2)',
   },
   buttonActive: {
-    backgroundColor: 'rgba(60,130,255,0.4)',
+    backgroundColor: 'rgba(60,130,255,0.18)',
+    borderColor: 'rgba(60,130,255,0.5)',
   },
   buttonText: {
     color: '#ffffff',
     fontSize: 14,
+    fontWeight: '600',
+  },
+  layerPills: {
+    position: 'absolute',
+    bottom: 32,
+    left: 0,
+    right: 0,
+    flexDirection: 'row',
+    justifyContent: 'center',
+    flexWrap: 'wrap',
+    gap: 6,
+    paddingHorizontal: 16,
+  },
+  pill: {
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 20,
+    borderWidth: 1,
+    backgroundColor: 'rgba(8,12,30,0.72)',
+  },
+  pillText: {
+    fontSize: 11,
     fontWeight: '600',
   },
 });

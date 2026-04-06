@@ -11,3 +11,147 @@ body {
 * {
   box-sizing: border-box;
 }
+
+/* ── Star-field background ───────────────────────────────────────────────── */
+.starfield {
+  position: fixed;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
+  z-index: 0;
+}
+
+.starfield::before,
+.starfield::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background-image:
+    radial-gradient(1px 1px at 10% 20%, rgba(255,255,255,0.9) 0%, transparent 100%),
+    radial-gradient(1px 1px at 25% 65%, rgba(255,255,255,0.7) 0%, transparent 100%),
+    radial-gradient(1.5px 1.5px at 40% 10%, rgba(255,255,255,0.8) 0%, transparent 100%),
+    radial-gradient(1px 1px at 55% 80%, rgba(255,255,255,0.6) 0%, transparent 100%),
+    radial-gradient(1px 1px at 70% 35%, rgba(255,255,255,0.9) 0%, transparent 100%),
+    radial-gradient(2px 2px at 80% 55%, rgba(200,220,255,0.7) 0%, transparent 100%),
+    radial-gradient(1px 1px at 92% 15%, rgba(255,255,255,0.8) 0%, transparent 100%),
+    radial-gradient(1px 1px at 15% 90%, rgba(255,255,255,0.5) 0%, transparent 100%),
+    radial-gradient(1.5px 1.5px at 48% 48%, rgba(255,255,255,0.7) 0%, transparent 100%),
+    radial-gradient(1px 1px at 63% 72%, rgba(255,255,255,0.6) 0%, transparent 100%),
+    radial-gradient(1px 1px at 33% 33%, rgba(200,230,255,0.8) 0%, transparent 100%),
+    radial-gradient(2px 2px at 85% 88%, rgba(255,255,255,0.5) 0%, transparent 100%),
+    radial-gradient(1px 1px at 5% 50%, rgba(255,255,255,0.7) 0%, transparent 100%),
+    radial-gradient(1px 1px at 77% 22%, rgba(255,255,255,0.9) 0%, transparent 100%),
+    radial-gradient(1.5px 1.5px at 60% 5%, rgba(200,220,255,0.6) 0%, transparent 100%);
+  background-size: 300px 300px, 350px 400px, 250px 280px, 400px 350px, 320px 290px,
+                   280px 350px, 420px 300px, 360px 380px, 290px 320px, 380px 260px,
+                   310px 340px, 270px 390px, 340px 270px, 290px 310px, 380px 280px;
+  animation: starDrift 120s linear infinite;
+}
+
+.starfield::after {
+  animation-duration: 180s;
+  animation-direction: reverse;
+  opacity: 0.6;
+}
+
+@keyframes starDrift {
+  from { transform: translateY(0); }
+  to   { transform: translateY(-300px); }
+}
+
+/* ── Glassmorphism panel ─────────────────────────────────────────────────── */
+.glass-panel {
+  background: rgba(10, 10, 30, 0.72);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 12px;
+}
+
+/* ── HUD slide-in animation ──────────────────────────────────────────────── */
+@keyframes slideInRight {
+  from { transform: translateX(100%); opacity: 0; }
+  to   { transform: translateX(0);    opacity: 1; }
+}
+
+@keyframes slideInLeft {
+  from { transform: translateX(-100%); opacity: 0; }
+  to   { transform: translateX(0);     opacity: 1; }
+}
+
+@keyframes slideInUp {
+  from { transform: translateY(100%); opacity: 0; }
+  to   { transform: translateY(0);    opacity: 1; }
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+@keyframes fadeInScale {
+  from { opacity: 0; transform: scale(0.92); }
+  to   { opacity: 1; transform: scale(1); }
+}
+
+/* ── Splash zoom-in transition ───────────────────────────────────────────── */
+@keyframes splashZoomIn {
+  from { opacity: 1; transform: scale(1); }
+  to   { opacity: 0; transform: scale(2.5); }
+}
+
+@keyframes mapZoomIn {
+  from { opacity: 0; transform: scale(0.95); }
+  to   { opacity: 1; transform: scale(1); }
+}
+
+/* ── Earth rotation ──────────────────────────────────────────────────────── */
+@keyframes earthSpin {
+  from { transform: rotate(0deg); }
+  to   { transform: rotate(360deg); }
+}
+
+@keyframes earthGlow {
+  0%, 100% { box-shadow: 0 0 40px 10px rgba(50, 120, 255, 0.35); }
+  50%       { box-shadow: 0 0 60px 20px rgba(50, 120, 255, 0.55); }
+}
+
+/* ── Coordinate pulse ────────────────────────────────────────────────────── */
+@keyframes coordPulse {
+  0%   { opacity: 1; }
+  50%  { opacity: 0.4; }
+  100% { opacity: 1; }
+}
+
+.coord-pulse {
+  animation: coordPulse 0.4s ease-in-out;
+}
+
+/* ── ISS pulsing ring ────────────────────────────────────────────────────── */
+@keyframes issRing {
+  0%   { transform: scale(1);   opacity: 0.8; }
+  100% { transform: scale(2.5); opacity: 0; }
+}
+
+/* ── Layer dock expand ───────────────────────────────────────────────────── */
+@keyframes dockItemIn {
+  from { transform: translateY(20px) scale(0.8); opacity: 0; }
+  to   { transform: translateY(0)    scale(1);   opacity: 1; }
+}
+
+/* ── Glow accent dot ─────────────────────────────────────────────────────── */
+@keyframes glowPulse {
+  0%, 100% { box-shadow: 0 0 4px 1px currentColor; }
+  50%       { box-shadow: 0 0 8px 3px currentColor; }
+}
+
+/* ── Respect reduced-motion preference ──────────────────────────────────── */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
