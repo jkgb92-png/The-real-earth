@@ -39,7 +39,7 @@ function useUTCClock(): string {
   return time;
 }
 
-export function HUDPanel({ lat, lon, zoom, activeLayers }: Props): React.ReactElement {
+export function HUDPanel({ lat, lon, zoom, activeLayers }: Props) {
   const [collapsed, setCollapsed] = useState(false);
   const utcTime = useUTCClock();
 

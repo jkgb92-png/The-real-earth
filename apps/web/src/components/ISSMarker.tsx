@@ -31,7 +31,7 @@ interface Props {
   enabled: boolean;
 }
 
-export function ISSMarker({ enabled }: Props): React.ReactElement | null {
+export function ISSMarker({ enabled }: Props): React.ReactNode {
   const [position, setPosition] = useState<ISSPosition | null>(null);
   const [showTooltip, setShowTooltip] = useState(false);
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);

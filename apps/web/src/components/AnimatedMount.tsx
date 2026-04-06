@@ -18,7 +18,7 @@ interface Props {
   children: React.ReactNode;
 }
 
-export function AnimatedMount({ splash, children }: Props): React.ReactElement {
+export function AnimatedMount({ splash, children }: Props) {
   const [showSplash, setShowSplash] = useState(true);
   const [mapVisible, setMapVisible] = useState(false);
 

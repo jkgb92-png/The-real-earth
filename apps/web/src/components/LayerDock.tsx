@@ -41,7 +41,7 @@ const ITEMS: Array<{
   { key: 'sentinel',   icon: '📡', label: 'Sentinel-2',        activeColor: '#f59e0b' },
 ];
 
-export function LayerDock({ mode, layers, onModeToggle, onLayerToggle }: Props): React.ReactElement {
+export function LayerDock({ mode, layers, onModeToggle, onLayerToggle }: Props) {
   const [expanded, setExpanded] = useState(false);
 
   return (

@@ -15,7 +15,7 @@ interface Props {
   tileServerUrl: string;
 }
 
-export function GlobeIframe({ tileServerUrl }: Props): React.ReactElement {
+export function GlobeIframe({ tileServerUrl }: Props) {
   const src = `/globe?tileServer=${encodeURIComponent(tileServerUrl)}`;
   return (
     <iframe
