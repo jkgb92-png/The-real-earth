@@ -70,6 +70,46 @@ docker compose -f infra/docker-compose.yml up
 | Sentinel-1 SAR | 10 m | ✅ | Cloud-penetrating radar |
 | MODIS Terra/Aqua | 250 m | Partial | Daily global coverage |
 
+## Deploy
+
+> Config files (`render.yaml`, `vercel.json`, `.github/workflows/ci.yml`) are already included in this repo.
+
+### Frontend → Vercel
+
+1. Go to [vercel.com](https://vercel.com) → **New Project** → import this repository.
+2. Vercel reads `vercel.json` automatically — it sets the root directory to `apps/web`, the install command to `npm ci` (run from the repo root so npm workspaces resolve), and the build command to `npm run build --workspace=apps/web`.
+3. Add the following **Environment Variables** in the Vercel dashboard:
+
+   | Variable | Value |
+   |---|---|
+   | `NEXT_PUBLIC_TILE_SERVER_URL` | Your Render backend URL (e.g. `https://the-real-earth-backend.onrender.com`) |
+   | `NEXT_PUBLIC_MAPBOX_TOKEN` | Your Mapbox public token |
+   | `NEXT_PUBLIC_CESIUM_ION_TOKEN` | *(optional)* Your Cesium Ion token |
+
+4. Click **Deploy**. Subsequent pushes to `main` auto-deploy.
+
+### Backend → Render
+
+1. Go to [render.com](https://render.com) → **New** → **Blueprint** → connect this repository.
+   Render reads `render.yaml` and creates the `the-real-earth-backend` Web Service automatically using `backend/Dockerfile`.
+2. Add the following **Secret** environment variables in the Render dashboard (never commit real values):
+
+   | Variable | Description |
+   |---|---|
+   | `COPERNICUS_CLIENT_ID` | ESA Copernicus Hub client ID |
+   | `COPERNICUS_CLIENT_SECRET` | ESA Copernicus Hub client secret |
+   | `CORS_ORIGINS` | Your Vercel frontend URL (e.g. `https://the-real-earth.vercel.app`) |
+
+3. Click **Apply**. Render builds the Docker image and starts the service. The `/health` endpoint is used as the health check.
+
+### CI (GitHub Actions)
+
+Every push / PR to `main` runs `.github/workflows/ci.yml`:
+- **frontend** job: `npm ci` → typecheck → lint → build for `apps/web`
+- **backend** job: `pip install` → `pytest backend/tests/`
+
+No secrets are needed for CI to run.
+
 ## Environment Variables
 
 | Variable | Description |

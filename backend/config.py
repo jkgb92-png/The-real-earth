@@ -23,3 +23,9 @@ class Settings(BaseSettings):
     # Copernicus / ESA
     copernicus_client_id: str = ""
     copernicus_client_secret: str = ""
+
+    # CORS — comma-separated list of allowed origins.
+    # Set CORS_ORIGINS to your Vercel frontend URL in production, e.g.:
+    #   CORS_ORIGINS=https://the-real-earth.vercel.app
+    # Defaults to "*" (open) for local development.
+    cors_origins: str = "*"

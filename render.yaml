@@ -1,0 +1,26 @@
+services:
+  - type: web
+    name: the-real-earth-backend
+    runtime: docker
+    # Dockerfile is at repo root (build context = repo root, Dockerfile = backend/Dockerfile)
+    dockerfilePath: backend/Dockerfile
+    # Render builds from the repo root so the COPY backend/ commands in the
+    # Dockerfile resolve correctly against the monorepo root.
+    dockerContext: .
+    plan: free
+    # Render injects PORT automatically; the Dockerfile CMD reads it via ${PORT:-8000}
+    envVars:
+      - key: PORT
+        value: "8000"
+      - key: GIBS_BASE_URL
+        value: https://gibs.earthdata.nasa.gov/wmts/epsg3857/best
+      - key: SAR_FEATURE_ENABLED
+        value: "false"
+      # Set these in the Render dashboard (never commit real values):
+      # - key: COPERNICUS_CLIENT_ID
+      #   value: <your-copernicus-client-id>
+      # - key: COPERNICUS_CLIENT_SECRET
+      #   value: <your-copernicus-client-secret>
+      # - key: TILE_STORE_PATH
+      #   value: /opt/render/project/src/tiles
+    healthCheckPath: /health
