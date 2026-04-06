@@ -1,5 +1,5 @@
 steps:
-  # Build the web Docker image (build context is apps/web/)
+  # Build the web Docker image from repo root so npm workspaces resolve correctly
   - name: 'gcr.io/cloud-builders/docker'
     id: 'build-web'
     args:
@@ -8,7 +8,9 @@ steps:
       - gcr.io/$PROJECT_ID/web:$COMMIT_SHA
       - -t
       - gcr.io/$PROJECT_ID/web:latest
-      - apps/web
+      - -f
+      - apps/web/Dockerfile
+      - .
 
   # Build the backend Docker image (build context is repo root)
   - name: 'gcr.io/cloud-builders/docker'
