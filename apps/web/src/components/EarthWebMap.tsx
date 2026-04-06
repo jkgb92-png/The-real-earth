@@ -149,7 +149,7 @@ const DEBOUNCE_MS = 150;
 
 // ── Component ─────────────────────────────────────────────────────────────────
 
-export function EarthWebMap(): React.ReactElement {
+export function EarthWebMap() {
   const [mode, setMode] = useState<'map' | 'globe'>('map');
   const [layers, setLayers] = useState<LayerState>({
     clouds: false,
