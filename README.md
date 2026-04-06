@@ -23,6 +23,21 @@ The-real-earth/
     └── terraform/       # Cloud tile CDN (GCS + Cloud Run)
 ```
 
+## Cloud Build (Google Cloud)
+
+To build and deploy the web app using a Google Cloud Build **Dockerfile** trigger,
+configure the trigger with:
+
+| Field | Value |
+|-------|-------|
+| **Dockerfile directory** | `apps/web` |
+| **Dockerfile name** | `Dockerfile` |
+
+Cloud Build will use `apps/web` as the Docker build context.  The `apps/web`
+directory is self-contained: it has its own `package.json` / `package-lock.json`
+and the Dockerfile sets `NEXT_OUTPUT_MODE=standalone` so the resulting image
+starts with `node server.js` on port 3000.
+
 ## Quick Start
 
 ### Backend
