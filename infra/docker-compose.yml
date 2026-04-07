@@ -13,6 +13,7 @@ services:
     volumes:
       - tile-store:/app/tiles
     environment:
+      - PORT=8000
       - TILE_STORE_PATH=/app/tiles
       - GIBS_BASE_URL=https://gibs.earthdata.nasa.gov/wmts/epsg3857/best
       - SAR_FEATURE_ENABLED=${SAR_FEATURE_ENABLED:-false}
