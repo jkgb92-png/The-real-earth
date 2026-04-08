@@ -5,17 +5,7 @@ steps:
   # Build the web Docker image from repo root so npm workspaces resolve correctly
   - name: 'gcr.io/cloud-builders/docker'
     id: 'build-web'
-    args:
-      - build
-      - -t
-      - gcr.io/$PROJECT_ID/web:$COMMIT_SHA
-      - -t
-      - gcr.io/$PROJECT_ID/web:latest
-      - --build-arg
-      - NEXT_PUBLIC_MAPBOX_TOKEN=${_MAPBOX_TOKEN}
-      - -f
-      - apps/web/Dockerfile
-      - .
+    args: ['build', '--build-arg', 'NEXT_PUBLIC_MAPBOX_TOKEN=${_MAPBOX_TOKEN}', '-t', 'gcr.io/$PROJECT_ID/web:$COMMIT_SHA', '-t', 'gcr.io/$PROJECT_ID/web:latest', '-f', 'apps/web/Dockerfile', '.']
 
   # Build the backend Docker image (build context is repo root)
   - name: 'gcr.io/cloud-builders/docker'
