@@ -1,3 +1,6 @@
+substitutions:
+  _MAPBOX_TOKEN: ''
+
 steps:
   # Build the web Docker image from repo root so npm workspaces resolve correctly
   - name: 'gcr.io/cloud-builders/docker'
@@ -8,6 +11,8 @@ steps:
       - gcr.io/$PROJECT_ID/web:$COMMIT_SHA
       - -t
       - gcr.io/$PROJECT_ID/web:latest
+      - --build-arg
+      - NEXT_PUBLIC_MAPBOX_TOKEN=$_MAPBOX_TOKEN
       - -f
       - apps/web/Dockerfile
       - .
