@@ -12,7 +12,7 @@ steps:
       - -t
       - gcr.io/$PROJECT_ID/web:latest
       - --build-arg
-      - NEXT_PUBLIC_MAPBOX_TOKEN=$_MAPBOX_TOKEN
+      - NEXT_PUBLIC_MAPBOX_TOKEN=${_MAPBOX_TOKEN}
       - -f
       - apps/web/Dockerfile
       - .
