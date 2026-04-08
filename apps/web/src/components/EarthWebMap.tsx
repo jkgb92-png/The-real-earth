@@ -227,12 +227,12 @@ export function EarthWebMap() {
   };
 
   return (
-    <div style={{ position: 'relative', width: '100%', height: '100%' }}>
+    <div style={{ position: 'relative', width: '100vw', height: '100vh' }}>
       <Map
         ref={mapRef}
         mapboxAccessToken={MAPBOX_TOKEN}
         initialViewState={{ longitude: 0, latitude: 20, zoom: 2 }}
-        style={{ width: '100%', height: '100%' }}
+        style={{ width: '100vw', height: '100vh' }}
         mapStyle="mapbox://styles/mapbox/dark-v11"
         onMove={handleMove}
         onMouseMove={handleMouseMove}
