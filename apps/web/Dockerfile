@@ -18,6 +18,8 @@ COPY . .
 
 # Build only the web workspace (standalone output for Docker/Cloud Run)
 ENV NEXT_OUTPUT_MODE=standalone
+ARG NEXT_PUBLIC_MAPBOX_TOKEN
+ENV NEXT_PUBLIC_MAPBOX_TOKEN=$NEXT_PUBLIC_MAPBOX_TOKEN
 RUN npm run build --workspace=apps/web
 
 FROM node:20-alpine AS runner
