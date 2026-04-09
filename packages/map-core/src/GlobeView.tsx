@@ -89,7 +89,7 @@ function buildGlobeHtml(tileServerUrl: string, cesiumIonToken: string, shader: s
     viewer.imageryLayers.addImageryProvider(
       new Cesium.UrlTemplateImageryProvider({
         url: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
-        minimumLevel: 9,
+        minimumLevel: 8,
         maximumLevel: 19,
         credit: 'Esri World Imagery',
       })

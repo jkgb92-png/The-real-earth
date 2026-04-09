@@ -316,7 +316,7 @@ export function EarthWebMap() {
             type="raster"
             tiles={[ESRI_OCEAN_BASEMAP_URL]}
             tileSize={256}
-            maxzoom={10}
+            maxzoom={12}
           >
             <Layer {...bathymetryLayer} />
           </Source>
