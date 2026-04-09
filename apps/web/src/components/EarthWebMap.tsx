@@ -31,8 +31,8 @@ import Map, {
   RasterLayer,
   Source,
   ViewStateChangeEvent,
-} from 'react-map-gl';
-import 'mapbox-gl/dist/mapbox-gl.css';
+} from 'react-map-gl/maplibre';
+import 'maplibre-gl/dist/maplibre-gl.css';
 import { GlobeIframe } from './GlobeIframe';
 import { HUDPanel } from './HUDPanel';
 import { LayerDock, LayerState } from './LayerDock';
@@ -42,7 +42,6 @@ const DEFAULT_TILE_SERVER_URL = 'http://localhost:8000';
 
 const TILE_SERVER_URL =
   process.env.NEXT_PUBLIC_TILE_SERVER_URL ?? DEFAULT_TILE_SERVER_URL;
-const MAPBOX_TOKEN = process.env.NEXT_PUBLIC_MAPBOX_TOKEN ?? '';
 const OWM_KEY = process.env.NEXT_PUBLIC_OWM_KEY ?? '';
 
 // When the tile server is not available (e.g. GitHub Pages static deployment),
@@ -258,11 +257,9 @@ export function EarthWebMap() {
     <div style={{ position: 'relative', width: '100vw', height: '100vh' }}>
       <Map
         ref={mapRef}
-        mapboxAccessToken={MAPBOX_TOKEN}
         initialViewState={{ longitude: 0, latitude: 20, zoom: 2 }}
         style={{ width: '100vw', height: '100vh' }}
-        mapStyle={MAPBOX_TOKEN ? 'mapbox://styles/mapbox/dark-v11' : MINIMAL_DARK_STYLE}
-        projection={{ name: 'mercator' }}
+        mapStyle={MINIMAL_DARK_STYLE}
         onMove={handleMove}
         onMouseMove={handleMouseMove}
         maxZoom={20}

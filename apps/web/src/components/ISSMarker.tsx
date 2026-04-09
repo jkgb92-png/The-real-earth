@@ -13,7 +13,7 @@
  */
 
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { Marker } from 'react-map-gl';
+import { Marker } from 'react-map-gl/maplibre';
 
 const ISS_API = 'https://api.wheretheiss.at/v1/satellites/25544';
 const POLL_INTERVAL_MS = 5000;
