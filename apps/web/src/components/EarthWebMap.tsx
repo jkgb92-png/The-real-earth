@@ -76,7 +76,7 @@ const gibsLayer: RasterLayerSpecification = {
   type: 'raster',
   source: 'gibs',
   maxzoom: 9,
-  paint: { 'raster-opacity': 1 },
+  paint: { 'raster-opacity': 1, 'raster-resampling': 'nearest' },
 };
 
 const sentinelLayer: RasterLayerSpecification = {
@@ -84,7 +84,7 @@ const sentinelLayer: RasterLayerSpecification = {
   type: 'raster',
   source: 'sentinel',
   minzoom: 10,
-  paint: { 'raster-opacity': 1 },
+  paint: { 'raster-opacity': 1, 'raster-resampling': 'nearest' },
 };
 
 const terminatorFillLayer: FillLayerSpecification = {
