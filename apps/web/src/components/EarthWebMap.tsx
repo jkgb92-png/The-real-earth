@@ -7,10 +7,12 @@
  *
  * Layers
  * ------
- *  1. NASA GIBS Blue Marble base raster (z ≤ 8)
- *  2. Cloud-free Sentinel-2 composite overlay (z ≥ 10)
- *  3. Day/Night terminator polygon (real-time, redrawn every 60 s)
- *  4. OpenWeatherMap cloud tiles (optional, toggled by user)
+ *  1. NASA GIBS Blue Marble base raster (z ≤ 8, nearest resampling)
+ *  2. ESRI World Imagery gap-fill (z ≥ 8, nearest resampling) — sharp at all zooms including Antarctica
+ *  3. Cloud-free Sentinel-2 composite overlay (z ≥ 10, tile-server only)
+ *  4. Day/Night terminator polygon (real-time, redrawn every 60 s)
+ *  5. OpenWeatherMap cloud tiles (optional, toggled by user)
+ *  6. Ocean floor bathymetry — ESRI Ocean Basemap (optional, toggled by user)
  *
  * Features
  * --------
@@ -87,16 +89,19 @@ const gibsLayer: RasterLayerSpecification = {
   id: 'gibs-layer',
   type: 'raster',
   source: 'gibs',
-  maxzoom: 10,
-  paint: { 'raster-opacity': 1, 'raster-resampling': 'linear' },
+  // Cap at z=9: above this ESRI takes over, preventing blurry upscaling of z=8 tiles.
+  maxzoom: 9,
+  paint: { 'raster-opacity': 1, 'raster-resampling': 'nearest' },
 };
 
 const esriLayer: RasterLayerSpecification = {
   id: 'esri-layer',
   type: 'raster',
   source: 'esri',
-  minzoom: 9,
-  paint: { 'raster-opacity': 1, 'raster-resampling': 'linear' },
+  // Start at z=8 so ESRI overlaps GIBS at its native ceiling, closing the
+  // z=8–9 gap that previously let blurry upscaled GIBS tiles show through.
+  minzoom: 8,
+  paint: { 'raster-opacity': 1, 'raster-resampling': 'nearest' },
 };
 
 const sentinelLayer: RasterLayerSpecification = {
@@ -111,7 +116,7 @@ const bathymetryLayer: RasterLayerSpecification = {
   id: 'bathymetry-layer',
   type: 'raster',
   source: 'bathymetry',
-  paint: { 'raster-opacity': 0.75, 'raster-resampling': 'linear' },
+  paint: { 'raster-opacity': 0.75, 'raster-resampling': 'nearest' },
 };
 
 const terminatorFillLayer: FillLayerSpecification = {

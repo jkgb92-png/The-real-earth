@@ -85,6 +85,16 @@ function buildGlobeHtml(tileServerUrl: string, cesiumIonToken: string, shader: s
       })
     );
 
+    // ESRI World Imagery — high-resolution gap-fill above z=8.
+    viewer.imageryLayers.addImageryProvider(
+      new Cesium.UrlTemplateImageryProvider({
+        url: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
+        minimumLevel: 9,
+        maximumLevel: 19,
+        credit: 'Esri World Imagery',
+      })
+    );
+
     // Atmospheric Rayleigh scattering post-process stage
     const rayleighShader = \`${safeShader}\`;
     viewer.scene.postProcessStages.add(
@@ -101,7 +111,7 @@ function buildGlobeHtml(tileServerUrl: string, cesiumIonToken: string, shader: s
     // Enable atmosphere and lighting
     viewer.scene.globe.enableLighting = true;
     viewer.scene.skyAtmosphere.show = true;
-    // Request higher-resolution tiles when zoomed in (default is 2)
+    // Request tiles at 1:1 screen pixels — eliminates blurry upscaling.
     viewer.scene.globe.maximumScreenSpaceError = 1;
   </script>
 </body>
