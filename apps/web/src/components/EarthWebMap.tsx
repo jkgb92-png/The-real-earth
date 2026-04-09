@@ -75,7 +75,7 @@ const gibsLayer: RasterLayerSpecification = {
   id: 'gibs-layer',
   type: 'raster',
   source: 'gibs',
-  maxzoom: 9,
+  maxzoom: 10,
   paint: { 'raster-opacity': 1, 'raster-resampling': 'nearest' },
 };
 

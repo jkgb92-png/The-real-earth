@@ -102,7 +102,7 @@ def composite_to_webp(composite: np.ndarray) -> bytes:
     rgb = (composite[:3] / 256).astype(np.uint8)
     img = Image.fromarray(np.moveaxis(rgb, 0, -1))
     buf = io.BytesIO()
-    img.save(buf, format="WEBP", quality=85)
+    img.save(buf, format="WEBP", quality=90)
     return buf.getvalue()
 
 

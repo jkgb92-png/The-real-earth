@@ -117,7 +117,8 @@ export function EarthMapView({
         <RasterLayer
           id="gibs-layer"
           sourceID="gibs-source"
-          style={{ rasterOpacity: 1 }}
+          maxZoomLevel={10}
+          style={{ rasterOpacity: 1, rasterResampling: 'nearest' }}
         />
       </RasterSource>
 
@@ -133,7 +134,7 @@ export function EarthMapView({
           id="sentinel-layer"
           sourceID="sentinel-source"
           minZoomLevel={10}
-          style={{ rasterOpacity: 1 }}
+          style={{ rasterOpacity: 1, rasterResampling: 'nearest' }}
         />
       </RasterSource>
     </MapView>
