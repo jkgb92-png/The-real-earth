@@ -24,11 +24,11 @@
 
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import Map, {
-  FillLayer,
+  FillLayerSpecification,
   Layer,
   MapMouseEvent,
   MapRef,
-  RasterLayer,
+  RasterLayerSpecification,
   Source,
   ViewStateChangeEvent,
 } from 'react-map-gl/maplibre';
@@ -71,7 +71,7 @@ const MINIMAL_DARK_STYLE = {
 
 // ── Layer spec objects ────────────────────────────────────────────────────────
 
-const gibsLayer: RasterLayer = {
+const gibsLayer: RasterLayerSpecification = {
   id: 'gibs-layer',
   type: 'raster',
   source: 'gibs',
@@ -79,7 +79,7 @@ const gibsLayer: RasterLayer = {
   paint: { 'raster-opacity': 1 },
 };
 
-const sentinelLayer: RasterLayer = {
+const sentinelLayer: RasterLayerSpecification = {
   id: 'sentinel-layer',
   type: 'raster',
   source: 'sentinel',
@@ -87,7 +87,7 @@ const sentinelLayer: RasterLayer = {
   paint: { 'raster-opacity': 1 },
 };
 
-const terminatorFillLayer: FillLayer = {
+const terminatorFillLayer: FillLayerSpecification = {
   id: 'terminator-fill',
   type: 'fill',
   source: 'terminator',
@@ -97,7 +97,7 @@ const terminatorFillLayer: FillLayer = {
   },
 };
 
-const cloudsLayer: RasterLayer = {
+const cloudsLayer: RasterLayerSpecification = {
   id: 'clouds-layer',
   type: 'raster',
   source: 'clouds',
