@@ -1,8 +1,8 @@
 FROM node:20-alpine AS builder
 WORKDIR /repo
 
-# Copy root workspace manifests and lockfile
-COPY package.json package-lock.json ./
+# Copy root workspace manifests, lockfile, and npm config
+COPY package.json package-lock.json .npmrc ./
 
 # Copy workspace package.json files so npm can resolve the workspace graph
 COPY apps/web/package.json apps/web/package.json
