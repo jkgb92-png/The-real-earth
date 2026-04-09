@@ -38,10 +38,37 @@ import { HUDPanel } from './HUDPanel';
 import { LayerDock, LayerState } from './LayerDock';
 import { ISSMarker } from './ISSMarker';
 
+const DEFAULT_TILE_SERVER_URL = 'http://localhost:8000';
+
 const TILE_SERVER_URL =
-  process.env.NEXT_PUBLIC_TILE_SERVER_URL ?? 'http://localhost:8000';
+  process.env.NEXT_PUBLIC_TILE_SERVER_URL ?? DEFAULT_TILE_SERVER_URL;
 const MAPBOX_TOKEN = process.env.NEXT_PUBLIC_MAPBOX_TOKEN ?? '';
 const OWM_KEY = process.env.NEXT_PUBLIC_OWM_KEY ?? '';
+
+// When the tile server is not available (e.g. GitHub Pages static deployment),
+// fetch Blue Marble tiles directly from NASA GIBS instead of through the proxy.
+// GIBS WMTS uses {TileMatrix}/{TileRow}/{TileCol} = {z}/{y}/{x} in XYZ terms.
+const GIBS_DIRECT_URL =
+  'https://gibs.earthdata.nasa.gov/wmts/epsg3857/best' +
+  '/BlueMarble_NextGeneration/default/2004-08-01' +
+  '/GoogleMapsCompatible_Level8/{z}/{y}/{x}.jpg';
+
+const TILE_SERVER_AVAILABLE =
+  TILE_SERVER_URL !== '' && TILE_SERVER_URL !== DEFAULT_TILE_SERVER_URL;
+
+const gibsTileUrl = TILE_SERVER_AVAILABLE
+  ? `${TILE_SERVER_URL}/tiles/gibs/{z}/{x}/{y}.jpg`
+  : GIBS_DIRECT_URL;
+
+const sentinelTileUrl = `${TILE_SERVER_URL}/tiles/sentinel/{z}/{x}/{y}`;
+
+// When no Mapbox token is provided (static/GitHub Pages deployments) fall back
+// to a minimal inline style so the map canvas is visible instead of black.
+const MINIMAL_DARK_STYLE = {
+  version: 8 as const,
+  sources: {} as Record<string, never>,
+  layers: [{ id: 'bg', type: 'background' as const, paint: { 'background-color': '#050814' } }],
+};
 
 // ── Layer spec objects ────────────────────────────────────────────────────────
 
@@ -234,17 +261,17 @@ export function EarthWebMap() {
         mapboxAccessToken={MAPBOX_TOKEN}
         initialViewState={{ longitude: 0, latitude: 20, zoom: 2 }}
         style={{ width: '100vw', height: '100vh' }}
-        mapStyle="mapbox://styles/mapbox/dark-v11"
+        mapStyle={MAPBOX_TOKEN ? 'mapbox://styles/mapbox/dark-v11' : MINIMAL_DARK_STYLE}
         projection={{ name: 'mercator' }}
         onMove={handleMove}
         onMouseMove={handleMouseMove}
         maxZoom={20}
       >
-        {/* Base layer: NASA GIBS Blue Marble */}
+        {/* Base layer: NASA GIBS Blue Marble (direct or proxied) */}
         <Source
           id="gibs"
           type="raster"
-          tiles={[`${TILE_SERVER_URL}/tiles/gibs/{z}/{x}/{y}.jpg`]}
+          tiles={[gibsTileUrl]}
           tileSize={256}
           maxzoom={8}
         >
@@ -252,11 +279,11 @@ export function EarthWebMap() {
         </Source>
 
         {/* High-res overlay: Sentinel-2 cloud-free composite */}
-        {layers.sentinel && (
+        {layers.sentinel && TILE_SERVER_AVAILABLE && (
           <Source
             id="sentinel"
             type="raster"
-            tiles={[`${TILE_SERVER_URL}/tiles/sentinel/{z}/{x}/{y}`]}
+            tiles={[sentinelTileUrl]}
             tileSize={256}
             minzoom={10}
             maxzoom={20}
