@@ -8,15 +8,15 @@
  * --------
  * - 150 ms debounce before upgrading tile resolution (avoids spamming requests
  *   while the user is actively pinching/dragging).
- * - Dynamic resolution cap: devices with < 3 GB RAM are limited to zoom 16
- *   instead of the default max of 20.
+ * - Dynamic resolution cap: devices with < 3 GB RAM are limited to zoom 22
+ *   instead of the default max of 25.
  * - Exposes `prefetchRadius` so the tile cache can pre-warm a 3×3 grid.
  */
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 
-const DEFAULT_MAX_ZOOM = 20;
-const LOW_MEMORY_MAX_ZOOM = 16;
+const DEFAULT_MAX_ZOOM = 25;
+const LOW_MEMORY_MAX_ZOOM = 22;
 const LOW_MEMORY_THRESHOLD_MB = 3072; // 3 GB in MB
 const DEBOUNCE_MS = 150;
 

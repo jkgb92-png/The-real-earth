@@ -86,7 +86,7 @@ async def gibs_tile(z: int, x: int, y: int) -> Response:
 )
 async def sentinel_tile(
     request: Request,
-    z: int = Path(ge=0, le=20),
+    z: int = Path(ge=0, le=25),
     x: int = Path(ge=0),
     y: int = Path(ge=0),
     passes: int = Query(default=8, ge=3, le=30),

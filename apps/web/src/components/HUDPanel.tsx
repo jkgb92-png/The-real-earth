@@ -92,7 +92,7 @@ export function HUDPanel({ lat, lon, zoom, activeLayers }: Props) {
               <div
                 style={{
                   ...zoomFill,
-                  width: `${Math.min(100, (zoom / 20) * 100)}%`,
+                  width: `${Math.min(100, (zoom / 25) * 100)}%`,
                 }}
               />
             </div>
