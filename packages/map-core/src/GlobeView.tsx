@@ -101,6 +101,8 @@ function buildGlobeHtml(tileServerUrl: string, cesiumIonToken: string, shader: s
     // Enable atmosphere and lighting
     viewer.scene.globe.enableLighting = true;
     viewer.scene.skyAtmosphere.show = true;
+    // Request higher-resolution tiles when zoomed in (default is 2)
+    viewer.scene.globe.maximumScreenSpaceError = 1;
   </script>
 </body>
 </html>`;
