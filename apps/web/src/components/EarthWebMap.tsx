@@ -191,6 +191,7 @@ export function EarthWebMap() {
 
   const handleMouseMove = useCallback(
     (evt: MapMouseEvent) => {
+      if (!evt.lngLat) return;
       setCursorLat(evt.lngLat.lat);
       setCursorLon(evt.lngLat.lng);
     },
@@ -234,6 +235,7 @@ export function EarthWebMap() {
         initialViewState={{ longitude: 0, latitude: 20, zoom: 2 }}
         style={{ width: '100vw', height: '100vh' }}
         mapStyle="mapbox://styles/mapbox/dark-v11"
+        projection={{ name: 'mercator' }}
         onMove={handleMove}
         onMouseMove={handleMouseMove}
         maxZoom={20}
