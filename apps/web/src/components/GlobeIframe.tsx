@@ -16,7 +16,9 @@ interface Props {
 }
 
 export function GlobeIframe({ tileServerUrl }: Props) {
-  const src = `/globe?tileServer=${encodeURIComponent(tileServerUrl)}`;
+  // Use a relative URL so it works both on GitHub Pages (basePath=/The-real-earth)
+  // and in local dev / standalone deployments without needing a route handler.
+  const src = `globe.html?tileServer=${encodeURIComponent(tileServerUrl)}`;
   return (
     <iframe
       src={src}

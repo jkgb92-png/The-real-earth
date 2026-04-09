@@ -61,6 +61,12 @@ const gibsTileUrl = TILE_SERVER_AVAILABLE
 
 const sentinelTileUrl = `${TILE_SERVER_URL}/tiles/sentinel/{z}/{x}/{y}`;
 
+// Free ESRI World Imagery tiles – up to zoom 19, no auth required.
+// Used as a high-resolution fallback on static/GitHub Pages deployments where
+// the Sentinel-2 tile server is unavailable.
+const ESRI_WORLD_IMAGERY_URL =
+  'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}';
+
 // When no Mapbox token is provided (static/GitHub Pages deployments) fall back
 // to a minimal inline style so the map canvas is visible instead of black.
 const MINIMAL_DARK_STYLE = {
@@ -76,7 +82,15 @@ const gibsLayer: RasterLayerSpecification = {
   type: 'raster',
   source: 'gibs',
   maxzoom: 10,
-  paint: { 'raster-opacity': 1, 'raster-resampling': 'nearest' },
+  paint: { 'raster-opacity': 1, 'raster-resampling': 'linear' },
+};
+
+const esriLayer: RasterLayerSpecification = {
+  id: 'esri-layer',
+  type: 'raster',
+  source: 'esri',
+  minzoom: 9,
+  paint: { 'raster-opacity': 1, 'raster-resampling': 'linear' },
 };
 
 const sentinelLayer: RasterLayerSpecification = {
@@ -275,6 +289,19 @@ export function EarthWebMap() {
           <Layer {...gibsLayer} />
         </Source>
 
+        {/* High-res fallback: ESRI World Imagery (no tile-server required, zoom ≤ 19) */}
+        {!TILE_SERVER_AVAILABLE && (
+          <Source
+            id="esri"
+            type="raster"
+            tiles={[ESRI_WORLD_IMAGERY_URL]}
+            tileSize={256}
+            maxzoom={19}
+          >
+            <Layer {...esriLayer} />
+          </Source>
+        )}
+
         {/* High-res overlay: Sentinel-2 cloud-free composite */}
         {layers.sentinel && TILE_SERVER_AVAILABLE && (
           <Source
@@ -353,15 +380,32 @@ export function EarthWebMap() {
           >
             NASA GIBS
           </a>
-          {' · '}
-          <a
-            href="https://sentinel.esa.int"
-            target="_blank"
-            rel="noopener noreferrer"
-            style={attrLink}
-          >
-            ESA Sentinel-2
-          </a>
+          {!TILE_SERVER_AVAILABLE && (
+            <>
+              {' · '}
+              <a
+                href="https://www.esri.com"
+                target="_blank"
+                rel="noopener noreferrer"
+                style={attrLink}
+              >
+                Esri World Imagery
+              </a>
+            </>
+          )}
+          {TILE_SERVER_AVAILABLE && (
+            <>
+              {' · '}
+              <a
+                href="https://sentinel.esa.int"
+                target="_blank"
+                rel="noopener noreferrer"
+                style={attrLink}
+              >
+                ESA Sentinel-2
+              </a>
+            </>
+          )}
           {' · '}
           <a
             href="https://wheretheiss.at"
