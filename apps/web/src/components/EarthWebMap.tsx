@@ -262,7 +262,7 @@ export function EarthWebMap() {
         mapStyle={MINIMAL_DARK_STYLE}
         onMove={handleMove}
         onMouseMove={handleMouseMove}
-        maxZoom={20}
+        maxZoom={25}
       >
         {/* Base layer: NASA GIBS Blue Marble (direct or proxied) */}
         <Source
@@ -283,7 +283,7 @@ export function EarthWebMap() {
             tiles={[sentinelTileUrl]}
             tileSize={256}
             minzoom={10}
-            maxzoom={20}
+            maxzoom={25}
           >
             <Layer {...sentinelLayer} />
           </Source>
