@@ -20,6 +20,7 @@ export interface LayerState {
   terminator: boolean;
   iss: boolean;
   sentinel: boolean;
+  bathymetry: boolean;
 }
 
 interface Props {
@@ -35,10 +36,11 @@ const ITEMS: Array<{
   label: string;
   activeColor: string;
 }> = [
-  { key: 'clouds',     icon: '☁',  label: 'Live Clouds',      activeColor: '#6dd5fa' },
-  { key: 'terminator', icon: '🌙', label: 'Day/Night',         activeColor: '#a78bfa' },
-  { key: 'iss',        icon: '🛰', label: 'ISS Tracker',       activeColor: '#34d399' },
-  { key: 'sentinel',   icon: '📡', label: 'Sentinel-2',        activeColor: '#f59e0b' },
+  { key: 'clouds',       icon: '☁',  label: 'Live Clouds',      activeColor: '#6dd5fa' },
+  { key: 'terminator',   icon: '🌙', label: 'Day/Night',         activeColor: '#a78bfa' },
+  { key: 'iss',          icon: '🛰', label: 'ISS Tracker',       activeColor: '#34d399' },
+  { key: 'sentinel',     icon: '📡', label: 'Sentinel-2',        activeColor: '#f59e0b' },
+  { key: 'bathymetry',   icon: '🌊', label: 'Bathymetry',        activeColor: '#22d3ee' },
 ];
 
 export function LayerDock({ mode, layers, onModeToggle, onLayerToggle }: Props) {
@@ -169,6 +171,7 @@ function hexToRgbStr(hex: string): string {
     '#a78bfa': '167,139,250',
     '#34d399': '52,211,153',
     '#f59e0b': '245,158,11',
+    '#22d3ee': '34,211,238',
   };
   return map[hex] ?? '80,160,255';
 }
