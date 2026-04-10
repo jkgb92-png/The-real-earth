@@ -145,8 +145,45 @@ body {
   50%       { box-shadow: 0 0 8px 3px currentColor; }
 }
 
-/* ── Respect reduced-motion preference ──────────────────────────────────── */
+/* ── Tile blur-up transition ─────────────────────────────────────────────── */
+/*
+ * Blur-up / LQIP technique for raster map tiles:
+ *
+ * While MapLibre is fetching and decoding new tiles (map is "moving" or
+ * "zooming"), the map wrapper receives the class `tiles-loading`.  The canvas
+ * is given a subtle Gaussian blur so the upscaled/pixelated placeholder tiles
+ * look soft rather than jarring.  Once MapLibre fires its `idle` event (all
+ * visible tiles have been painted) the class is removed and the blur dissolves
+ * with a smooth CSS transition — revealing the crisp, fully-loaded imagery.
+ *
+ * This pairs with MapLibre's built-in `raster-fade-duration: 300ms` on each
+ * layer so the new tiles also fade in (opacity 0 → 1) over the blurry
+ * placeholder, creating a seamless blur-to-sharp animation.
+ */
+.map-blur-wrapper canvas.maplibregl-canvas {
+  /* Smooth dissolve from blurry to sharp when idle fires */
+  transition: filter 500ms ease-out;
+  will-change: filter;
+}
+
+.map-blur-wrapper.tiles-loading canvas.maplibregl-canvas {
+  /*
+   * Snap to blurry the instant movement starts (transition: none) so there is
+   * no lag before the blur appears, then the 500 ms ease-out above plays on
+   * removal of the class when tiles finish loading.
+   */
+  filter: blur(2.5px);
+  transition: filter 0ms;
+}
+
+/* Respect reduced-motion: skip the blur entirely for users who prefer it */
 @media (prefers-reduced-motion: reduce) {
+  .map-blur-wrapper canvas.maplibregl-canvas,
+  .map-blur-wrapper.tiles-loading canvas.maplibregl-canvas {
+    filter: none !important;
+    transition: none !important;
+  }
+
   *,
   *::before,
   *::after {

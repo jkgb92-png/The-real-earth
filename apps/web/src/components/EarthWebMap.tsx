@@ -366,8 +366,34 @@ export function EarthWebMap() {
     bathymetry: layers.bathymetry,
   };
 
+  /**
+   * retinaTileSize — the value passed to every raster <Source tileSize={…}>.
+   *
+   * How the @2x / tileSize pattern works
+   * ─────────────────────────────────────
+   * When a tile provider serves native 512 px (@2x) tiles you set
+   * tileSize={256}: MapLibre renders each 512 px tile into 256 CSS pixels.
+   * On a DPR=2 (Retina) screen, 256 CSS px = 512 physical px — a perfect 1:1
+   * match. On a DPR=1 screen, 256 CSS px = 256 physical px with 512 px of
+   * source data — a 2× downsample, which is still sharp.
+   *
+   * Our sources (ESRI, GIBS, OWM) serve 256 px tiles with no @2x endpoint.
+   * For those, we use tileSize={128} on retina: MapLibre requests tiles at
+   * zoom+1, rendering each 256 px tile into 128 CSS px = 256 physical px at
+   * DPR=2 (1:1 sharp). The cost is ~4× as many requests; the gain is
+   * pixel-perfect imagery on high-DPI screens.
+   *
+   * For our own Sentinel tile server (future @2x support):
+   *   tiles={[`${TILE_SERVER_URL}/tiles/sentinel/{z}/{x}/{y}@2x`]}
+   *   tileSize={256}   ← always 256, regardless of DPR
+   */
+  const retinaTileSize = dpr >= 2 ? 128 : 256;
+
   return (
-    <div style={{ position: 'relative', width: '100vw', height: '100vh' }}>
+    <div
+      className={`map-blur-wrapper${tilesLoading ? ' tiles-loading' : ''}`}
+      style={{ position: 'relative', width: '100vw', height: '100vh' }}
+    >
       <Map
         ref={mapRef}
         initialViewState={{ longitude: 0, latitude: 20, zoom: 2 }}
@@ -375,14 +401,32 @@ export function EarthWebMap() {
         mapStyle={MINIMAL_DARK_STYLE}
         onMove={handleMove}
         onMouseMove={handleMouseMove}
+        onIdle={handleIdle}
         maxZoom={24}
+        /**
+         * pixelRatio — explicitly set to the screen's device pixel ratio so
+         * MapLibre sizes its WebGL canvas at full physical resolution and
+         * adjusts its tile-selection zoom accordingly. On a Retina/2× screen
+         * this causes MapLibre to request tiles from zoom+1, meaning each
+         * 256 px tile is rendered into 128 CSS px = 256 physical px (1:1
+         * sharpness) instead of being stretched 2× into 256 CSS px.
+         *
+         * This is the recommended retina approach for sources that serve
+         * standard 256 px tiles (ESRI, GIBS, OWM).
+         *
+         * For sources that serve native @2x (512 px) tiles — e.g. our own
+         * Sentinel tile server if upgraded — pair the @2x URL with
+         * tileSize={256}: MapLibre renders the 512 px tile into 256 CSS px,
+         * which on a 2× screen maps exactly to 512 physical px (1:1).
+         */
+        pixelRatio={dpr}
       >
         {/* Base layer: NASA GIBS Blue Marble (direct or proxied) */}
         <Source
           id="gibs"
           type="raster"
           tiles={[gibsTileUrl]}
-          tileSize={256}
+          tileSize={retinaTileSize}
           maxzoom={8}
         >
           <Layer {...gibsLayer} />
@@ -400,7 +444,7 @@ export function EarthWebMap() {
           id="esri"
           type="raster"
           tiles={[ESRI_WORLD_IMAGERY_URL]}
-          tileSize={256}
+          tileSize={retinaTileSize}
           maxzoom={19}
         >
           <Layer {...esriLayer} />
@@ -414,14 +458,18 @@ export function EarthWebMap() {
             id="bathymetry"
             type="raster"
             tiles={[ESRI_OCEAN_BASEMAP_URL]}
-            tileSize={256}
+            tileSize={retinaTileSize}
             maxzoom={12}
           >
             <Layer {...bathymetryLayer} />
           </Source>
         )}
 
-        {/* High-res overlay: Sentinel-2 cloud-free composite */}
+        {/* High-res overlay: Sentinel-2 cloud-free composite.
+            tileSize is kept at 256 (our server's native output size).
+            When the backend gains @2x support, update the tile URL to
+            sentinelTileUrl + '@2x' and keep tileSize={256} — MapLibre will
+            render the 512 px tile into 256 CSS px (1:1 on Retina). */}
         {layers.sentinel && TILE_SERVER_AVAILABLE && (
           <Source
             id="sentinel"
@@ -450,7 +498,7 @@ export function EarthWebMap() {
             tiles={[
               `https://tile.openweathermap.org/map/clouds_new/{z}/{x}/{y}.png?appid=${OWM_KEY}`,
             ]}
-            tileSize={256}
+            tileSize={retinaTileSize}
           >
             <Layer {...cloudsLayer} />
           </Source>
