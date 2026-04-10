@@ -103,25 +103,33 @@ def normalize_composite(
     p_high: float = 98.0,
 ) -> np.ndarray:
     """
-    Apply a per-band percentile stretch to a (bands, H, W) uint16 array.
+    Apply a shared percentile stretch to the first three (RGB) bands of a
+    (bands, H, W) uint16 array.
 
-    Maps each of the first three (RGB) bands' [p_low, p_high] percentile range
-    to [0, 65535] and clips outliers.  Bands beyond index 2 (e.g. NIR) are
-    passed through unchanged.  Using the same relative stretch for every tile
-    ensures that adjacent tiles composited from passes with different
-    illumination or atmospheric conditions appear at a consistent brightness
-    level, reducing the visible colour seams at tile boundaries.
+    A single [p_low, p_high] percentile range is computed from ALL valid pixels
+    across the three RGB bands combined, then applied equally to each band.
+    This preserves relative colour balance — independent per-band stretching
+    amplifies whichever channel has the narrowest dynamic range (e.g. green
+    over saline water), causing visible hue shifts and tile-boundary seams at
+    high zoom levels.  Bands beyond index 2 (e.g. NIR) are passed through
+    unchanged.
     """
     result = composite.copy()
-    for b in range(min(3, composite.shape[0])):
+    n_rgb = min(3, composite.shape[0])
+
+    # Gather all valid (non-zero) pixels from the RGB bands to derive a single
+    # shared stretch range that keeps the inter-band ratios intact.
+    rgb = composite[:n_rgb].astype(np.float32)
+    valid_all = rgb[rgb > 0]
+    if valid_all.size == 0:
+        return result
+    lo = float(np.percentile(valid_all, p_low))
+    hi = float(np.percentile(valid_all, p_high))
+    if hi <= lo:
+        return result
+
+    for b in range(n_rgb):
         band = composite[b].astype(np.float32)
-        valid = band[band > 0]
-        if valid.size == 0:
-            continue
-        lo = float(np.percentile(valid, p_low))
-        hi = float(np.percentile(valid, p_high))
-        if hi <= lo:
-            continue
         result[b] = np.clip((band - lo) / (hi - lo) * 65535.0, 0.0, 65535.0).astype(np.uint16)
     return result
 
