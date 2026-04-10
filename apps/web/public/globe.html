@@ -84,10 +84,9 @@
       })
     );
 
-    // ESRI World Imagery — high-resolution gap-fill above z=8.
-    // Keeps tiles sharp when zoomed in (Antarctica, coast detail, etc.)
-    // instead of letting CesiumJS upscale the z=8 GIBS tiles.
-    // No minimumLevel so ESRI always shows as the primary imagery layer.
+    // ESRI World Imagery — renders at all zoom levels; at z<8 it overlays the
+    // GIBS base, and at z≥8 it provides high-resolution detail (Antarctica,
+    // coastlines, etc.) that GIBS lacks.
     viewer.imageryLayers.addImageryProvider(
       new Cesium.UrlTemplateImageryProvider({
         url: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
