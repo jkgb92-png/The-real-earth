@@ -105,26 +105,25 @@ def normalize_composite(
     """
     Apply a per-band percentile stretch to a (bands, H, W) uint16 array.
 
-    Maps each band's [p_low, p_high] percentile range to [0, 65535] and
-    clips outliers.  Using the same relative stretch for every tile ensures
-    that adjacent tiles composited from passes with different illumination
-    or atmospheric conditions appear at a consistent brightness level,
-    reducing the visible colour seams at tile boundaries.
+    Maps each of the first three (RGB) bands' [p_low, p_high] percentile range
+    to [0, 65535] and clips outliers.  Bands beyond index 2 (e.g. NIR) are
+    passed through unchanged.  Using the same relative stretch for every tile
+    ensures that adjacent tiles composited from passes with different
+    illumination or atmospheric conditions appear at a consistent brightness
+    level, reducing the visible colour seams at tile boundaries.
     """
-    result = np.empty_like(composite, dtype=np.float32)
+    result = composite.copy()
     for b in range(min(3, composite.shape[0])):
         band = composite[b].astype(np.float32)
         valid = band[band > 0]
         if valid.size == 0:
-            result[b] = band
             continue
         lo = float(np.percentile(valid, p_low))
         hi = float(np.percentile(valid, p_high))
         if hi <= lo:
-            result[b] = band
             continue
-        result[b] = np.clip((band - lo) / (hi - lo) * 65535.0, 0.0, 65535.0)
-    return result.astype(np.uint16)
+        result[b] = np.clip((band - lo) / (hi - lo) * 65535.0, 0.0, 65535.0).astype(np.uint16)
+    return result
 
 
 def composite_to_webp(composite: np.ndarray) -> bytes:
