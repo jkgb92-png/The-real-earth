@@ -40,6 +40,7 @@ import { GlobeIframe } from './GlobeIframe';
 import { HUDPanel } from './HUDPanel';
 import { LayerDock, LayerState } from './LayerDock';
 import { ISSMarker } from './ISSMarker';
+import { useTilePrefetch } from '../hooks/useTilePrefetch';
 import { SavedLocationsPanel, SavedLocation } from './SavedLocationsPanel';
 
 const DEFAULT_TILE_SERVER_URL = 'http://localhost:8000';
@@ -106,21 +107,22 @@ const gibsLayer: RasterLayerSpecification = {
   // continues to overzoom them at higher map zooms so there is always a base
   // image underneath ESRI (preventing the "Map data not yet available" gap
   // when ESRI tiles fail to load or have no coverage for a given area).
-  paint: { 'raster-opacity': 1, 'raster-resampling': 'nearest', 'raster-fade-duration': 0 },
+  paint: { 'raster-opacity': 1, 'raster-resampling': 'nearest', 'raster-fade-duration': 300 },
 };
 
 const esriLayer: RasterLayerSpecification = {
   id: 'esri-layer',
   type: 'raster',
   source: 'esri',
-  // Start at z=8 so ESRI overlaps GIBS at its native ceiling, closing the
-  // z=8–9 gap that previously let blurry upscaled GIBS tiles show through.
-  // The layer renders at all map zooms (no maxzoom cap): the source maxzoom
-  // of 14 means MapLibre overzooms z=14 tiles at higher map zooms rather
-  // than fetching tiles that ESRI returns as placeholders for uncovered areas.
-  // Use linear resampling so the overzoomed tiles blend smoothly.
-  minzoom: 8,
-  paint: { 'raster-opacity': 1, 'raster-resampling': 'linear', 'raster-fade-duration': 0 },
+  // Start at z=2 so ESRI covers the full globe from low zoom levels.
+  // Previously set to z=8 to close the GIBS z=8–9 gap, but that left
+  // high-latitude regions (Canada, Arctic, ~60°N+) rendering only the GIBS
+  // Blue Marble layer, which shows featureless pure-white tiles at those
+  // latitudes (snow/ice with no detail). ESRI World Imagery has real
+  // satellite coverage for polar regions and now renders from zoom 2
+  // upward, fully replacing GIBS wherever ESRI has data.
+  minzoom: 2,
+  paint: { 'raster-opacity': 1, 'raster-resampling': 'nearest', 'raster-fade-duration': 300 },
 };
 
 const sentinelLayer: RasterLayerSpecification = {
@@ -128,7 +130,7 @@ const sentinelLayer: RasterLayerSpecification = {
   type: 'raster',
   source: 'sentinel',
   minzoom: 10,
-  paint: { 'raster-opacity': 1, 'raster-resampling': 'nearest', 'raster-fade-duration': 0 },
+  paint: { 'raster-opacity': 1, 'raster-resampling': 'nearest', 'raster-fade-duration': 300 },
 };
 
 const bathymetryLayer: RasterLayerSpecification = {
@@ -252,6 +254,32 @@ export function EarthWebMap() {
     () => buildTerminatorGeoJSON(new Date()),
   );
 
+  /**
+   * tilesLoading — true while the map is moving/zooming and new tiles are
+   * in-flight; false once MapLibre fires the `idle` event (all visible tiles
+   * have been painted). Used to drive the CSS blur-up transition.
+   */
+  const [tilesLoading, setTilesLoading] = useState(false);
+
+  /**
+   * dpr — device pixel ratio, read client-side to avoid SSR mismatches.
+   * Passed as `pixelRatio` to the MapLibre Map so that:
+   *  1. The WebGL canvas is sized at the full physical resolution of the screen.
+   *  2. MapLibre's tile-selection algorithm requests tiles at a zoom level
+   *     that provides ~tileSize * dpr physical pixels per tile, meaning Retina
+   *     (DPR=2) screens automatically receive z+1 tiles for crisp 1:1 rendering.
+   */
+  const [dpr, setDpr] = useState(1);
+  useEffect(() => {
+    setDpr(window.devicePixelRatio || 1);
+    // Re-sync if the user moves the browser window to a different monitor.
+    const mql = window.matchMedia(
+      `(resolution: ${window.devicePixelRatio}dppx)`,
+    );
+    const onDprChange = () => setDpr(window.devicePixelRatio || 1);
+    mql.addEventListener('change', onDprChange);
+    return () => mql.removeEventListener('change', onDprChange);
+  }, []);
   // ── Saved locations ────────────────────────────────────────────────────────
   const [savedLocations, setSavedLocations] = useState<SavedLocation[]>(() => {
     if (typeof window === 'undefined') return [];
@@ -309,6 +337,24 @@ export function EarthWebMap() {
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const mapRef = useRef<MapRef | null>(null);
 
+  /**
+   * Active tile URL templates for pre-fetching.
+   * Always include the base layers; conditionally add optional layers.
+   * URLs must use {z}/{x}/{y} substitution tokens.
+   *
+   * Note: ESRI uses {z}/{y}/{x} order in the path, but the template tokens
+   * ({z}, {x}, {y}) are still substituted by our hook — so the substitution
+   * is correct regardless of path order.
+   */
+  const prefetchTemplates = [
+    gibsTileUrl,
+    ESRI_WORLD_IMAGERY_URL,
+    ...(layers.sentinel && TILE_SERVER_AVAILABLE ? [sentinelTileUrl] : []),
+    ...(layers.bathymetry ? [ESRI_OCEAN_BASEMAP_URL] : []),
+  ];
+
+  const prefetch = useTilePrefetch(prefetchTemplates);
+
   // Update terminator every 60 s
   useEffect(() => {
     const id = setInterval(() => {
@@ -323,12 +369,38 @@ export function EarthWebMap() {
     setCursorLon(longitude);
     setZoom(z);
 
+    // Mark tiles as loading so the blur-up CSS class is applied immediately.
+    setTilesLoading(true);
+
     if (debounceRef.current) clearTimeout(debounceRef.current);
     debounceRef.current = setTimeout(() => {
+      // Pre-fetch surrounding tiles once the viewport settles.
+      const map = mapRef.current;
+      if (map) {
+        const bounds = map.getBounds();
+        if (bounds) {
+          prefetch({
+            zoom: z,
+            north: bounds.getNorth(),
+            south: bounds.getSouth(),
+            east: bounds.getEast(),
+            west: bounds.getWest(),
+          });
+        }
+      }
       if (process.env.NODE_ENV === 'development') {
         console.debug('[EarthWebMap] viewport', { z, longitude, latitude });
       }
     }, DEBOUNCE_MS);
+  }, [prefetch]);
+
+  /**
+   * handleIdle — fired by MapLibre once all pending tiles have been painted.
+   * Clears the tilesLoading flag so the CSS blur-up transition plays forward
+   * (blurry → sharp) rather than staying blurred indefinitely.
+   */
+  const handleIdle = useCallback(() => {
+    setTilesLoading(false);
   }, []);
 
   const handleMouseMove = useCallback(
@@ -372,8 +444,34 @@ export function EarthWebMap() {
     labels: layers.labels,
   };
 
+  /**
+   * retinaTileSize — the value passed to every raster <Source tileSize={…}>.
+   *
+   * How the @2x / tileSize pattern works
+   * ─────────────────────────────────────
+   * When a tile provider serves native 512 px (@2x) tiles you set
+   * tileSize={256}: MapLibre renders each 512 px tile into 256 CSS pixels.
+   * On a DPR=2 (Retina) screen, 256 CSS px = 512 physical px — a perfect 1:1
+   * match. On a DPR=1 screen, 256 CSS px = 256 physical px with 512 px of
+   * source data — a 2× downsample, which is still sharp.
+   *
+   * Our sources (ESRI, GIBS, OWM) serve 256 px tiles with no @2x endpoint.
+   * For those, we use tileSize={128} on retina: MapLibre requests tiles at
+   * zoom+1, rendering each 256 px tile into 128 CSS px = 256 physical px at
+   * DPR=2 (1:1 sharp). The cost is ~4× as many requests; the gain is
+   * pixel-perfect imagery on high-DPI screens.
+   *
+   * For our own Sentinel tile server (future @2x support):
+   *   tiles={[`${TILE_SERVER_URL}/tiles/sentinel/{z}/{x}/{y}@2x`]}
+   *   tileSize={256}   ← always 256, regardless of DPR
+   */
+  const retinaTileSize = dpr >= 2 ? 128 : 256;
+
   return (
-    <div style={{ position: 'relative', width: '100vw', height: '100vh' }}>
+    <div
+      className={`map-blur-wrapper${tilesLoading ? ' tiles-loading' : ''}`}
+      style={{ position: 'relative', width: '100vw', height: '100vh' }}
+    >
       <Map
         ref={mapRef}
         initialViewState={{ longitude: 0, latitude: 20, zoom: 2 }}
@@ -381,14 +479,32 @@ export function EarthWebMap() {
         mapStyle={MINIMAL_DARK_STYLE}
         onMove={handleMove}
         onMouseMove={handleMouseMove}
-        maxZoom={22}
+        onIdle={handleIdle}
+        maxZoom={24}
+        /**
+         * pixelRatio — explicitly set to the screen's device pixel ratio so
+         * MapLibre sizes its WebGL canvas at full physical resolution and
+         * adjusts its tile-selection zoom accordingly. On a Retina/2× screen
+         * this causes MapLibre to request tiles from zoom+1, meaning each
+         * 256 px tile is rendered into 128 CSS px = 256 physical px (1:1
+         * sharpness) instead of being stretched 2× into 256 CSS px.
+         *
+         * This is the recommended retina approach for sources that serve
+         * standard 256 px tiles (ESRI, GIBS, OWM).
+         *
+         * For sources that serve native @2x (512 px) tiles — e.g. our own
+         * Sentinel tile server if upgraded — pair the @2x URL with
+         * tileSize={256}: MapLibre renders the 512 px tile into 256 CSS px,
+         * which on a 2× screen maps exactly to 512 physical px (1:1).
+         */
+        pixelRatio={dpr}
       >
         {/* Base layer: NASA GIBS Blue Marble (direct or proxied) */}
         <Source
           id="gibs"
           type="raster"
           tiles={[gibsTileUrl]}
-          tileSize={256}
+          tileSize={retinaTileSize}
           maxzoom={8}
         >
           <Layer {...gibsLayer} />
@@ -421,14 +537,18 @@ export function EarthWebMap() {
             id="bathymetry"
             type="raster"
             tiles={[ESRI_OCEAN_BASEMAP_URL]}
-            tileSize={256}
+            tileSize={retinaTileSize}
             maxzoom={12}
           >
             <Layer {...bathymetryLayer} />
           </Source>
         )}
 
-        {/* High-res overlay: Sentinel-2 cloud-free composite */}
+        {/* High-res overlay: Sentinel-2 cloud-free composite.
+            tileSize is kept at 256 (our server's native output size).
+            When the backend gains @2x support, update the tile URL to
+            sentinelTileUrl + '@2x' and keep tileSize={256} — MapLibre will
+            render the 512 px tile into 256 CSS px (1:1 on Retina). */}
         {layers.sentinel && TILE_SERVER_AVAILABLE && (
           <Source
             id="sentinel"
@@ -483,7 +603,7 @@ export function EarthWebMap() {
             tiles={[
               `https://tile.openweathermap.org/map/clouds_new/{z}/{x}/{y}.png?appid=${OWM_KEY}`,
             ]}
-            tileSize={256}
+            tileSize={retinaTileSize}
           >
             <Layer {...cloudsLayer} />
           </Source>
