@@ -30,8 +30,9 @@ interface Props {
 }
 
 function useUTCClock(): string {
-  const [time, setTime] = useState(() => new Date().toUTCString().slice(17, 25));
+  const [time, setTime] = useState('');
   useEffect(() => {
+    setTime(new Date().toUTCString().slice(17, 25));
     const id = setInterval(() => {
       setTime(new Date().toUTCString().slice(17, 25));
     }, 1000);
