@@ -89,8 +89,10 @@ const gibsLayer: RasterLayerSpecification = {
   id: 'gibs-layer',
   type: 'raster',
   source: 'gibs',
-  // Cap at z=9: above this ESRI takes over, preventing blurry upscaling of z=8 tiles.
-  maxzoom: 9,
+  // No maxzoom cap: tiles are limited to z≤8 on the source, but the layer
+  // continues to overzoom them at higher map zooms so there is always a base
+  // image underneath ESRI (preventing the "Map data not yet available" gap
+  // when ESRI tiles fail to load or have no coverage for a given area).
   paint: { 'raster-opacity': 1, 'raster-resampling': 'nearest', 'raster-fade-duration': 0 },
 };
 
@@ -100,7 +102,10 @@ const esriLayer: RasterLayerSpecification = {
   source: 'esri',
   // Start at z=8 so ESRI overlaps GIBS at its native ceiling, closing the
   // z=8–9 gap that previously let blurry upscaled GIBS tiles show through.
+  // Cap at z=19 (ESRI's native max): above this, overzoomed ESRI tiles are
+  // gray for many areas, so we let the GIBS overzoom layer show instead.
   minzoom: 8,
+  maxzoom: 19,
   paint: { 'raster-opacity': 1, 'raster-resampling': 'nearest', 'raster-fade-duration': 0 },
 };
 
@@ -297,7 +302,7 @@ export function EarthWebMap() {
         mapStyle={MINIMAL_DARK_STYLE}
         onMove={handleMove}
         onMouseMove={handleMouseMove}
-        maxZoom={25}
+        maxZoom={22}
       >
         {/* Base layer: NASA GIBS Blue Marble (direct or proxied) */}
         <Source
