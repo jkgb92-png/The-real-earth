@@ -273,7 +273,7 @@ export function EarthWebMap() {
     const currentZoom = mapRef.current?.getZoom() ?? zoom;
     if (!center) return;
     const loc: SavedLocation = {
-      id: `loc-${Date.now()}`,
+      id: crypto.randomUUID(),
       name,
       lat: center.lat,
       lon: center.lng,
@@ -300,7 +300,10 @@ export function EarthWebMap() {
     fetch(NATURAL_EARTH_BORDERS_URL)
       .then((r) => r.json())
       .then((data: GeoJSON.FeatureCollection) => setBordersGeoJSON(data))
-      .catch(() => { bordersLoadedRef.current = false; });
+      .catch((err) => {
+        console.error('[EarthWebMap] Failed to load country borders:', err);
+        bordersLoadedRef.current = false;
+      });
   }, [layers.borders]);
 
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
