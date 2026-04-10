@@ -103,11 +103,11 @@ const esriLayer: RasterLayerSpecification = {
   // Start at z=8 so ESRI overlaps GIBS at its native ceiling, closing the
   // z=8–9 gap that previously let blurry upscaled GIBS tiles show through.
   // The layer renders at all map zooms (no maxzoom cap): the source maxzoom
-  // of 14 means MapLibre overzooms z=14 tiles at higher map zooms rather
-  // than fetching tiles that ESRI returns as placeholders for uncovered areas.
-  // Use linear resampling so the overzoomed tiles blend smoothly.
+  // of 19 means MapLibre fetches native z=19 tiles at high zooms (ESRI has
+  // near-global coverage at that level) and only overzooms from z=19 above
+  // that, keeping blurriness minimal even at zoom 20–22.
   minzoom: 8,
-  paint: { 'raster-opacity': 1, 'raster-resampling': 'linear', 'raster-fade-duration': 0 },
+  paint: { 'raster-opacity': 1, 'raster-resampling': 'nearest', 'raster-fade-duration': 0 },
 };
 
 const sentinelLayer: RasterLayerSpecification = {
@@ -321,16 +321,15 @@ export function EarthWebMap() {
             Antarctica) are rendered sharply instead of being upscaled from
             the z=8 GIBS Blue Marble. Falls back gracefully below Sentinel-2
             where the tile server is available.
-            Source maxzoom is capped at 14: ESRI has near-global Landsat
-            coverage at that level, so MapLibre overzooms z=14 tiles at higher
-            map zooms instead of fetching z>14 tiles that ESRI returns as
-            "Map data not yet available" placeholders for uncovered areas. */}
+            Source maxzoom is set to 19: ESRI has native imagery tiles at that
+            level across most of the globe, so MapLibre only needs to overzoom
+            by 2–3 levels at zoom 20–22 rather than 7+ levels from z=14. */}
         <Source
           id="esri"
           type="raster"
           tiles={[ESRI_WORLD_IMAGERY_URL]}
           tileSize={256}
-          maxzoom={14}
+          maxzoom={19}
         >
           <Layer {...esriLayer} />
         </Source>
