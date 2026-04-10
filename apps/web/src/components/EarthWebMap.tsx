@@ -303,7 +303,7 @@ export function EarthWebMap() {
         mapStyle={MINIMAL_DARK_STYLE}
         onMove={handleMove}
         onMouseMove={handleMouseMove}
-        maxZoom={22}
+        maxZoom={24}
       >
         {/* Base layer: NASA GIBS Blue Marble (direct or proxied) */}
         <Source
