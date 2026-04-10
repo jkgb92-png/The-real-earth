@@ -101,13 +101,14 @@ const esriLayer: RasterLayerSpecification = {
   id: 'esri-layer',
   type: 'raster',
   source: 'esri',
-  // Start at z=8 so ESRI overlaps GIBS at its native ceiling, closing the
-  // z=8–9 gap that previously let blurry upscaled GIBS tiles show through.
-  // The layer renders at all map zooms (no maxzoom cap): the source maxzoom
-  // of 19 means MapLibre fetches native z=19 tiles at high zooms (ESRI has
-  // near-global coverage at that level) and only overzooms from z=19 above
-  // that, keeping blurriness minimal even at zoom 20–22.
-  minzoom: 8,
+  // Start at z=2 so ESRI covers the full globe from low zoom levels.
+  // Previously set to z=8 to close the GIBS z=8–9 gap, but that left
+  // high-latitude regions (Canada, Arctic, ~60°N+) rendering only the GIBS
+  // Blue Marble layer, which shows featureless pure-white tiles at those
+  // latitudes (snow/ice with no detail). ESRI World Imagery has real
+  // satellite coverage for polar regions and now renders from zoom 2
+  // upward, fully replacing GIBS wherever ESRI has data.
+  minzoom: 2,
   paint: { 'raster-opacity': 1, 'raster-resampling': 'nearest', 'raster-fade-duration': 300 },
 };
 
