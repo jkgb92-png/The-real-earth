@@ -30,6 +30,7 @@ import Map, {
   Layer,
   MapMouseEvent,
   MapRef,
+  Marker,
   RasterLayerSpecification,
   Source,
   ViewStateChangeEvent,
@@ -40,6 +41,7 @@ import { HUDPanel } from './HUDPanel';
 import { LayerDock, LayerState } from './LayerDock';
 import { ISSMarker } from './ISSMarker';
 import { useTilePrefetch } from '../hooks/useTilePrefetch';
+import { SavedLocationsPanel, SavedLocation } from './SavedLocationsPanel';
 
 const DEFAULT_TILE_SERVER_URL = 'http://localhost:8000';
 
@@ -75,6 +77,17 @@ const ESRI_WORLD_IMAGERY_URL =
 // Renders ocean floor bathymetry (GEBCO-derived depth shading) with terrain for land.
 const ESRI_OCEAN_BASEMAP_URL =
   'https://server.arcgisonline.com/ArcGIS/rest/services/Ocean/World_Ocean_Base/MapServer/tile/{z}/{y}/{x}';
+
+// CARTO dark_only_labels – free, no API key required.
+// Transparent raster overlay containing country/city name labels styled in
+// white on a transparent background. Designed for overlay on satellite imagery.
+const CARTO_LABELS_URL =
+  'https://basemaps.cartocdn.com/dark_only_labels/{z}/{x}/{y}.png';
+
+// Natural Earth 110m country borders (simplified GeoJSON, ~325 KB).
+// Fetched lazily the first time the Borders layer is enabled.
+const NATURAL_EARTH_BORDERS_URL =
+  'https://cdn.jsdelivr.net/gh/nvkelso/natural-earth-vector@v5.1.2/geojson/ne_110m_admin_0_countries.geojson';
 
 // When no Mapbox token is provided (static/GitHub Pages deployments) fall back
 // to a minimal inline style so the map canvas is visible instead of black.
@@ -143,6 +156,13 @@ const cloudsLayer: RasterLayerSpecification = {
   type: 'raster',
   source: 'clouds',
   paint: { 'raster-opacity': 0.7 },
+};
+
+const labelsLayer: RasterLayerSpecification = {
+  id: 'labels-layer',
+  type: 'raster',
+  source: 'carto-labels',
+  paint: { 'raster-opacity': 1, 'raster-fade-duration': 0 },
 };
 
 // ── Day/Night terminator geometry ─────────────────────────────────────────────
@@ -224,6 +244,8 @@ export function EarthWebMap() {
     iss: true,
     sentinel: true,
     bathymetry: false,
+    borders: false,
+    labels: false,
   });
   const [cursorLat, setCursorLat] = useState(20);
   const [cursorLon, setCursorLon] = useState(0);
@@ -258,6 +280,59 @@ export function EarthWebMap() {
     mql.addEventListener('change', onDprChange);
     return () => mql.removeEventListener('change', onDprChange);
   }, []);
+  // ── Saved locations ────────────────────────────────────────────────────────
+  const [savedLocations, setSavedLocations] = useState<SavedLocation[]>(() => {
+    if (typeof window === 'undefined') return [];
+    try {
+      const stored = localStorage.getItem('earth-saved-locations');
+      return stored ? (JSON.parse(stored) as SavedLocation[]) : [];
+    } catch {
+      return [];
+    }
+  });
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    localStorage.setItem('earth-saved-locations', JSON.stringify(savedLocations));
+  }, [savedLocations]);
+
+  function handleAddLocation(name: string) {
+    const center = mapRef.current?.getCenter();
+    const currentZoom = mapRef.current?.getZoom() ?? zoom;
+    if (!center) return;
+    const loc: SavedLocation = {
+      id: crypto.randomUUID(),
+      name,
+      lat: center.lat,
+      lon: center.lng,
+      zoom: currentZoom,
+    };
+    setSavedLocations((prev) => [...prev, loc]);
+  }
+
+  function handleRemoveLocation(id: string) {
+    setSavedLocations((prev) => prev.filter((l) => l.id !== id));
+  }
+
+  function handleFlyTo(loc: SavedLocation) {
+    mapRef.current?.flyTo({ center: [loc.lon, loc.lat], zoom: loc.zoom, duration: 1500 });
+  }
+
+  // ── Country borders GeoJSON (lazy-loaded on first enable) ─────────────────
+  const [bordersGeoJSON, setBordersGeoJSON] = useState<GeoJSON.FeatureCollection | null>(null);
+  const bordersLoadedRef = useRef(false);
+
+  useEffect(() => {
+    if (!layers.borders || bordersLoadedRef.current) return;
+    bordersLoadedRef.current = true;
+    fetch(NATURAL_EARTH_BORDERS_URL)
+      .then((r) => r.json())
+      .then((data: GeoJSON.FeatureCollection) => setBordersGeoJSON(data))
+      .catch((err) => {
+        console.error('[EarthWebMap] Failed to load country borders:', err);
+        bordersLoadedRef.current = false;
+      });
+  }, [layers.borders]);
 
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const mapRef = useRef<MapRef | null>(null);
@@ -365,6 +440,8 @@ export function EarthWebMap() {
     iss: layers.iss,
     sentinel: layers.sentinel,
     bathymetry: layers.bathymetry,
+    borders: layers.borders,
+    labels: layers.labels,
   };
 
   /**
@@ -438,14 +515,15 @@ export function EarthWebMap() {
             Antarctica) are rendered sharply instead of being upscaled from
             the z=8 GIBS Blue Marble. Falls back gracefully below Sentinel-2
             where the tile server is available.
-            Source maxzoom is set to 19: ESRI has native imagery tiles at that
-            level across most of the globe, so MapLibre only needs to overzoom
-            by 2–3 levels at zoom 20–22 rather than 7+ levels from z=14. */}
+            Source maxzoom is set to 19: ESRI World Imagery has near-global
+            high-resolution coverage at that level, so actual tiles are fetched
+            at high zoom levels instead of overzooming lower-zoom tiles which
+            would appear blurry. */}
         <Source
           id="esri"
           type="raster"
           tiles={[ESRI_WORLD_IMAGERY_URL]}
-          tileSize={retinaTileSize}
+          tileSize={256}
           maxzoom={19}
         >
           <Layer {...esriLayer} />
@@ -484,6 +562,32 @@ export function EarthWebMap() {
           </Source>
         )}
 
+        {/* Country borders: Natural Earth 110m GeoJSON line layer */}
+        {layers.borders && bordersGeoJSON && (
+          <Source id="countries" type="geojson" data={bordersGeoJSON}>
+            <Layer
+              id="country-borders"
+              type="line"
+              paint={{
+                'line-color': 'rgba(255,255,255,0.55)',
+                'line-width': 0.75,
+              }}
+            />
+          </Source>
+        )}
+
+        {/* Country name labels: CARTO dark_only_labels transparent raster overlay */}
+        {layers.labels && (
+          <Source
+            id="carto-labels"
+            type="raster"
+            tiles={[CARTO_LABELS_URL]}
+            tileSize={256}
+          >
+            <Layer {...labelsLayer} />
+          </Source>
+        )}
+
         {/* Day/Night terminator */}
         {layers.terminator && (
           <Source id="terminator" type="geojson" data={termGeoJSON}>
@@ -507,6 +611,27 @@ export function EarthWebMap() {
 
         {/* ISS live position marker */}
         <ISSMarker enabled={layers.iss} />
+
+        {/* Saved view pin markers */}
+        {savedLocations.map((loc) => (
+          <Marker
+            key={loc.id}
+            longitude={loc.lon}
+            latitude={loc.lat}
+            anchor="bottom"
+          >
+            <div title={loc.name} style={{ cursor: 'pointer' }} onClick={() => handleFlyTo(loc)}>
+              <svg width="18" height="26" viewBox="0 0 18 26" fill="none">
+                <path
+                  d="M9 0C4.03 0 0 4.03 0 9C0 15.75 9 26 9 26C9 26 18 15.75 18 9C18 4.03 13.97 0 9 0Z"
+                  fill="#3c82ff"
+                  fillOpacity="0.88"
+                />
+                <circle cx="9" cy="9" r="3.5" fill="white" fillOpacity="0.9" />
+              </svg>
+            </div>
+          </Marker>
+        ))}
       </Map>
 
       {/* Crosshair */}
@@ -534,6 +659,14 @@ export function EarthWebMap() {
         layers={layers}
         onModeToggle={toggleMode}
         onLayerToggle={toggleLayer}
+      />
+
+      {/* Saved views panel */}
+      <SavedLocationsPanel
+        locations={savedLocations}
+        onAdd={handleAddLocation}
+        onRemove={handleRemoveLocation}
+        onFlyTo={handleFlyTo}
       />
 
       {/* Attribution bar */}
