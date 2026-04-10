@@ -321,16 +321,16 @@ export function EarthWebMap() {
             Antarctica) are rendered sharply instead of being upscaled from
             the z=8 GIBS Blue Marble. Falls back gracefully below Sentinel-2
             where the tile server is available.
-            Source maxzoom is capped at 14: ESRI has near-global Landsat
-            coverage at that level, so MapLibre overzooms z=14 tiles at higher
-            map zooms instead of fetching z>14 tiles that ESRI returns as
-            "Map data not yet available" placeholders for uncovered areas. */}
+            Source maxzoom is set to 19: ESRI World Imagery has near-global
+            high-resolution coverage at that level, so actual tiles are fetched
+            at high zoom levels instead of overzooming lower-zoom tiles which
+            would appear blurry. */}
         <Source
           id="esri"
           type="raster"
           tiles={[ESRI_WORLD_IMAGERY_URL]}
           tileSize={256}
-          maxzoom={14}
+          maxzoom={19}
         >
           <Layer {...esriLayer} />
         </Source>
