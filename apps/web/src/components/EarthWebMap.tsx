@@ -7,10 +7,12 @@
  *
  * Layers
  * ------
- *  1. NASA GIBS Blue Marble base raster (z ≤ 8)
- *  2. Cloud-free Sentinel-2 composite overlay (z ≥ 10)
- *  3. Day/Night terminator polygon (real-time, redrawn every 60 s)
- *  4. OpenWeatherMap cloud tiles (optional, toggled by user)
+ *  1. NASA GIBS Blue Marble base raster (z ≤ 8, nearest resampling)
+ *  2. ESRI World Imagery gap-fill (z ≥ 8, nearest resampling) — sharp at all zooms including Antarctica
+ *  3. Cloud-free Sentinel-2 composite overlay (z ≥ 10, tile-server only)
+ *  4. Day/Night terminator polygon (real-time, redrawn every 60 s)
+ *  5. OpenWeatherMap cloud tiles (optional, toggled by user)
+ *  6. Ocean floor bathymetry — ESRI Ocean Basemap (optional, toggled by user)
  *
  * Features
  * --------
@@ -62,10 +64,16 @@ const gibsTileUrl = TILE_SERVER_AVAILABLE
 const sentinelTileUrl = `${TILE_SERVER_URL}/tiles/sentinel/{z}/{x}/{y}`;
 
 // Free ESRI World Imagery tiles – up to zoom 19, no auth required.
-// Used as a high-resolution fallback on static/GitHub Pages deployments where
-// the Sentinel-2 tile server is unavailable.
+// Used as a high-resolution gap-fill at z ≥ 9 to cover areas (e.g. Antarctica)
+// where Sentinel-2 tiles are unavailable, and as the sole high-res source on
+// static/GitHub Pages deployments where the tile server is not available.
 const ESRI_WORLD_IMAGERY_URL =
   'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}';
+
+// ESRI Ocean Basemap – free, no auth required.
+// Renders ocean floor bathymetry (GEBCO-derived depth shading) with terrain for land.
+const ESRI_OCEAN_BASEMAP_URL =
+  'https://server.arcgisonline.com/ArcGIS/rest/services/Ocean/World_Ocean_Base/MapServer/tile/{z}/{y}/{x}';
 
 // When no Mapbox token is provided (static/GitHub Pages deployments) fall back
 // to a minimal inline style so the map canvas is visible instead of black.
@@ -81,16 +89,19 @@ const gibsLayer: RasterLayerSpecification = {
   id: 'gibs-layer',
   type: 'raster',
   source: 'gibs',
-  maxzoom: 10,
-  paint: { 'raster-opacity': 1, 'raster-resampling': 'linear' },
+  // Cap at z=9: above this ESRI takes over, preventing blurry upscaling of z=8 tiles.
+  maxzoom: 9,
+  paint: { 'raster-opacity': 1, 'raster-resampling': 'nearest' },
 };
 
 const esriLayer: RasterLayerSpecification = {
   id: 'esri-layer',
   type: 'raster',
   source: 'esri',
-  minzoom: 9,
-  paint: { 'raster-opacity': 1, 'raster-resampling': 'linear' },
+  // Start at z=8 so ESRI overlaps GIBS at its native ceiling, closing the
+  // z=8–9 gap that previously let blurry upscaled GIBS tiles show through.
+  minzoom: 8,
+  paint: { 'raster-opacity': 1, 'raster-resampling': 'nearest' },
 };
 
 const sentinelLayer: RasterLayerSpecification = {
@@ -99,6 +110,13 @@ const sentinelLayer: RasterLayerSpecification = {
   source: 'sentinel',
   minzoom: 10,
   paint: { 'raster-opacity': 1, 'raster-resampling': 'nearest' },
+};
+
+const bathymetryLayer: RasterLayerSpecification = {
+  id: 'bathymetry-layer',
+  type: 'raster',
+  source: 'bathymetry',
+  paint: { 'raster-opacity': 0.75, 'raster-resampling': 'nearest' },
 };
 
 const terminatorFillLayer: FillLayerSpecification = {
@@ -196,6 +214,7 @@ export function EarthWebMap() {
     terminator: true,
     iss: true,
     sentinel: true,
+    bathymetry: false,
   });
   const [cursorLat, setCursorLat] = useState(20);
   const [cursorLon, setCursorLon] = useState(0);
@@ -265,6 +284,7 @@ export function EarthWebMap() {
     terminator: layers.terminator,
     iss: layers.iss,
     sentinel: layers.sentinel,
+    bathymetry: layers.bathymetry,
   };
 
   return (
@@ -289,18 +309,33 @@ export function EarthWebMap() {
           <Layer {...gibsLayer} />
         </Source>
 
-        {/* High-res fallback: ESRI World Imagery (no tile-server required, zoom ≤ 19) */}
-        {!TILE_SERVER_AVAILABLE && (
+        {/* Bathymetry: ESRI Ocean Basemap (GEBCO-derived depth shading) */}
+        {layers.bathymetry && (
           <Source
-            id="esri"
+            id="bathymetry"
             type="raster"
-            tiles={[ESRI_WORLD_IMAGERY_URL]}
+            tiles={[ESRI_OCEAN_BASEMAP_URL]}
             tileSize={256}
-            maxzoom={19}
+            maxzoom={12}
           >
-            <Layer {...esriLayer} />
+            <Layer {...bathymetryLayer} />
           </Source>
         )}
+
+        {/* High-res gap-fill: ESRI World Imagery (z ≥ 9).
+            Always active so that areas without Sentinel-2 coverage (e.g.
+            Antarctica) are rendered sharply instead of being upscaled from
+            the z=8 GIBS Blue Marble. Falls back gracefully below Sentinel-2
+            where the tile server is available. */}
+        <Source
+          id="esri"
+          type="raster"
+          tiles={[ESRI_WORLD_IMAGERY_URL]}
+          tileSize={256}
+          maxzoom={19}
+        >
+          <Layer {...esriLayer} />
+        </Source>
 
         {/* High-res overlay: Sentinel-2 cloud-free composite */}
         {layers.sentinel && TILE_SERVER_AVAILABLE && (
@@ -380,19 +415,15 @@ export function EarthWebMap() {
           >
             NASA GIBS
           </a>
-          {!TILE_SERVER_AVAILABLE && (
-            <>
-              {' · '}
-              <a
-                href="https://www.esri.com"
-                target="_blank"
-                rel="noopener noreferrer"
-                style={attrLink}
-              >
-                Esri World Imagery
-              </a>
-            </>
-          )}
+          {' · '}
+          <a
+            href="https://www.esri.com"
+            target="_blank"
+            rel="noopener noreferrer"
+            style={attrLink}
+          >
+            Esri World Imagery
+          </a>
           {TILE_SERVER_AVAILABLE && (
             <>
               {' · '}
@@ -403,6 +434,19 @@ export function EarthWebMap() {
                 style={attrLink}
               >
                 ESA Sentinel-2
+              </a>
+            </>
+          )}
+          {layers.bathymetry && (
+            <>
+              {' · '}
+              <a
+                href="https://www.gebco.net"
+                target="_blank"
+                rel="noopener noreferrer"
+                style={attrLink}
+              >
+                GEBCO / Esri Ocean
               </a>
             </>
           )}

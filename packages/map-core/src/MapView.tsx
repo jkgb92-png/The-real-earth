@@ -87,6 +87,7 @@ export function EarthMapView({
 
   const gibsUrl = `${tileServerUrl}/tiles/gibs/{z}/{x}/{y}.jpg`;
   const sentinelUrl = `${tileServerUrl}/tiles/sentinel/{z}/{x}/{y}`;
+  const esriUrl = 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}';
 
   return (
     <MapView
@@ -107,7 +108,7 @@ export function EarthMapView({
         maxZoomLevel={maxZoom}
       />
 
-      {/* Base layer: NASA GIBS Blue Marble */}
+      {/* Base layer: NASA GIBS Blue Marble (native tiles up to z=8) */}
       <RasterSource
         id="gibs-source"
         tileUrlTemplates={[gibsUrl]}
@@ -117,7 +118,24 @@ export function EarthMapView({
         <RasterLayer
           id="gibs-layer"
           sourceID="gibs-source"
-          maxZoomLevel={10}
+          maxZoomLevel={9}
+          style={{ rasterOpacity: 1, rasterResampling: 'nearest' }}
+        />
+      </RasterSource>
+
+      {/* Gap-fill: ESRI World Imagery (z ≥ 8, up to z=19).
+          Starts at z=8 so there is no blur window between GIBS and Sentinel:
+          Antarctica and other Sentinel-2-free areas stay sharp at any zoom. */}
+      <RasterSource
+        id="esri-source"
+        tileUrlTemplates={[esriUrl]}
+        tileSize={256}
+        maxZoomLevel={19}
+      >
+        <RasterLayer
+          id="esri-layer"
+          sourceID="esri-source"
+          minZoomLevel={8}
           style={{ rasterOpacity: 1, rasterResampling: 'nearest' }}
         />
       </RasterSource>

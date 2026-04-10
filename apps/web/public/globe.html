@@ -71,6 +71,18 @@
       })
     );
 
+    // ESRI World Imagery — high-resolution gap-fill above z=8.
+    // Keeps tiles sharp when zoomed in (Antarctica, coast detail, etc.)
+    // instead of letting CesiumJS upscale the z=8 GIBS tiles.
+    viewer.imageryLayers.addImageryProvider(
+      new Cesium.UrlTemplateImageryProvider({
+        url: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
+        minimumLevel: 8,
+        maximumLevel: 19,
+        credit: 'Esri World Imagery',
+      })
+    );
+
     // Black Marble (city lights) — second layer, visible on night side
     const blackMarbleProvider = new Cesium.UrlTemplateImageryProvider({
       url: 'https://gibs.earthdata.nasa.gov/wmts/epsg3857/best/VIIRS_Black_Marble/default/2016-01-01/GoogleMapsCompatible_Level8/{z}/{reverseY}/{x}.jpg',
@@ -131,6 +143,9 @@
     viewer.scene.skyAtmosphere.hueShift = -0.03;
     viewer.scene.skyAtmosphere.saturationShift = 0.1;
     viewer.scene.skyAtmosphere.brightnessShift = 0.02;
+    // Request tiles at 1:1 screen pixels — eliminates blurry upscaling.
+    // Default is 2 (half-resolution); 1 forces native-resolution tile selection.
+    viewer.scene.globe.maximumScreenSpaceError = 1;
 
     // ── Phase 4.2: ISS orbit shell (translucent ellipsoid at ~420 km) ───────
     const EARTH_RADIUS_M = 6_371_000;
