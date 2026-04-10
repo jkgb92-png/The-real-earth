@@ -39,6 +39,7 @@ import { GlobeIframe } from './GlobeIframe';
 import { HUDPanel } from './HUDPanel';
 import { LayerDock, LayerState } from './LayerDock';
 import { ISSMarker } from './ISSMarker';
+import { useTilePrefetch } from '../hooks/useTilePrefetch';
 
 const DEFAULT_TILE_SERVER_URL = 'http://localhost:8000';
 
@@ -93,7 +94,7 @@ const gibsLayer: RasterLayerSpecification = {
   // continues to overzoom them at higher map zooms so there is always a base
   // image underneath ESRI (preventing the "Map data not yet available" gap
   // when ESRI tiles fail to load or have no coverage for a given area).
-  paint: { 'raster-opacity': 1, 'raster-resampling': 'nearest', 'raster-fade-duration': 0 },
+  paint: { 'raster-opacity': 1, 'raster-resampling': 'nearest', 'raster-fade-duration': 300 },
 };
 
 const esriLayer: RasterLayerSpecification = {
@@ -107,7 +108,7 @@ const esriLayer: RasterLayerSpecification = {
   // near-global coverage at that level) and only overzooms from z=19 above
   // that, keeping blurriness minimal even at zoom 20–22.
   minzoom: 8,
-  paint: { 'raster-opacity': 1, 'raster-resampling': 'nearest', 'raster-fade-duration': 0 },
+  paint: { 'raster-opacity': 1, 'raster-resampling': 'nearest', 'raster-fade-duration': 300 },
 };
 
 const sentinelLayer: RasterLayerSpecification = {
@@ -115,7 +116,7 @@ const sentinelLayer: RasterLayerSpecification = {
   type: 'raster',
   source: 'sentinel',
   minzoom: 10,
-  paint: { 'raster-opacity': 1, 'raster-resampling': 'nearest', 'raster-fade-duration': 0 },
+  paint: { 'raster-opacity': 1, 'raster-resampling': 'nearest', 'raster-fade-duration': 300 },
 };
 
 const bathymetryLayer: RasterLayerSpecification = {
@@ -230,8 +231,53 @@ export function EarthWebMap() {
     () => buildTerminatorGeoJSON(new Date()),
   );
 
+  /**
+   * tilesLoading — true while the map is moving/zooming and new tiles are
+   * in-flight; false once MapLibre fires the `idle` event (all visible tiles
+   * have been painted). Used to drive the CSS blur-up transition.
+   */
+  const [tilesLoading, setTilesLoading] = useState(false);
+
+  /**
+   * dpr — device pixel ratio, read client-side to avoid SSR mismatches.
+   * Passed as `pixelRatio` to the MapLibre Map so that:
+   *  1. The WebGL canvas is sized at the full physical resolution of the screen.
+   *  2. MapLibre's tile-selection algorithm requests tiles at a zoom level
+   *     that provides ~tileSize * dpr physical pixels per tile, meaning Retina
+   *     (DPR=2) screens automatically receive z+1 tiles for crisp 1:1 rendering.
+   */
+  const [dpr, setDpr] = useState(1);
+  useEffect(() => {
+    setDpr(window.devicePixelRatio || 1);
+    // Re-sync if the user moves the browser window to a different monitor.
+    const mql = window.matchMedia(
+      `(resolution: ${window.devicePixelRatio}dppx)`,
+    );
+    const onDprChange = () => setDpr(window.devicePixelRatio || 1);
+    mql.addEventListener('change', onDprChange);
+    return () => mql.removeEventListener('change', onDprChange);
+  }, []);
+
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const mapRef = useRef<MapRef | null>(null);
+
+  /**
+   * Active tile URL templates for pre-fetching.
+   * Always include the base layers; conditionally add optional layers.
+   * URLs must use {z}/{x}/{y} substitution tokens.
+   *
+   * Note: ESRI uses {z}/{y}/{x} order in the path, but the template tokens
+   * ({z}, {x}, {y}) are still substituted by our hook — so the substitution
+   * is correct regardless of path order.
+   */
+  const prefetchTemplates = [
+    gibsTileUrl,
+    ESRI_WORLD_IMAGERY_URL,
+    ...(layers.sentinel && TILE_SERVER_AVAILABLE ? [sentinelTileUrl] : []),
+    ...(layers.bathymetry ? [ESRI_OCEAN_BASEMAP_URL] : []),
+  ];
+
+  const prefetch = useTilePrefetch(prefetchTemplates);
 
   // Update terminator every 60 s
   useEffect(() => {
@@ -247,12 +293,38 @@ export function EarthWebMap() {
     setCursorLon(longitude);
     setZoom(z);
 
+    // Mark tiles as loading so the blur-up CSS class is applied immediately.
+    setTilesLoading(true);
+
     if (debounceRef.current) clearTimeout(debounceRef.current);
     debounceRef.current = setTimeout(() => {
+      // Pre-fetch surrounding tiles once the viewport settles.
+      const map = mapRef.current;
+      if (map) {
+        const bounds = map.getBounds();
+        if (bounds) {
+          prefetch({
+            zoom: z,
+            north: bounds.getNorth(),
+            south: bounds.getSouth(),
+            east: bounds.getEast(),
+            west: bounds.getWest(),
+          });
+        }
+      }
       if (process.env.NODE_ENV === 'development') {
         console.debug('[EarthWebMap] viewport', { z, longitude, latitude });
       }
     }, DEBOUNCE_MS);
+  }, [prefetch]);
+
+  /**
+   * handleIdle — fired by MapLibre once all pending tiles have been painted.
+   * Clears the tilesLoading flag so the CSS blur-up transition plays forward
+   * (blurry → sharp) rather than staying blurred indefinitely.
+   */
+  const handleIdle = useCallback(() => {
+    setTilesLoading(false);
   }, []);
 
   const handleMouseMove = useCallback(
