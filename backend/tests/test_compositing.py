@@ -11,7 +11,7 @@ Run from repo root with:
 import numpy as np
 import pytest
 
-from backend.compositing import cloud_mask_from_band, median_composite
+from backend.compositing import cloud_mask_from_band, median_composite, normalize_composite
 
 
 # ---------------------------------------------------------------------------
@@ -142,3 +142,66 @@ class TestMedianComposite:
             open(p, "w").close()
         result = median_composite(paths)
         assert result.dtype == np.uint16
+
+
+# ---------------------------------------------------------------------------
+# normalize_composite
+# ---------------------------------------------------------------------------
+
+class TestNormalizeComposite:
+    def test_shared_stretch_preserves_colour_balance(self):
+        """
+        Neutral (grey) pixels must remain neutral after a shared stretch.
+
+        Build a composite where each band has a different dynamic range
+        (so per-band and shared stretching would diverge), but set one
+        pixel to have equal values across R, G, B (i.e. a grey pixel).
+        After a shared stretch that pixel must still be grey because all
+        bands are shifted and scaled by the *same* affine transform.
+        """
+        R_MIN, R_MAX = 500, 1000    # dynamic range 500
+        G_MIN, G_MAX = 200, 4000    # dynamic range 3800 (much wider)
+        B_MIN, B_MAX = 800, 2000    # dynamic range 1200
+        GREY_VAL = 1000             # neutral pixel value equal across R, G, B
+
+        h, w = 4, 8
+        composite = np.zeros((4, h, w), dtype=np.uint16)
+        composite[0] = np.linspace(R_MIN, R_MAX, h * w, dtype=np.uint16).reshape(h, w)
+        composite[1] = np.linspace(G_MIN, G_MAX, h * w, dtype=np.uint16).reshape(h, w)
+        composite[2] = np.linspace(B_MIN, B_MAX, h * w, dtype=np.uint16).reshape(h, w)
+        # NIR: arbitrary, must pass through unchanged
+        composite[3] = 9999
+
+        # Force one pixel to be neutral grey (R = G = B = GREY_VAL)
+        composite[0, 0, 0] = GREY_VAL
+        composite[1, 0, 0] = GREY_VAL
+        composite[2, 0, 0] = GREY_VAL
+
+        result = normalize_composite(composite)
+
+        # With a shared lo/hi the same affine function is applied to every
+        # band, so equal input values produce equal output values — the grey
+        # pixel stays grey.
+        r_grey = int(result[0, 0, 0])
+        g_grey = int(result[1, 0, 0])
+        b_grey = int(result[2, 0, 0])
+
+        assert r_grey == g_grey == b_grey, (
+            f"Grey pixel must stay grey after shared stretch; "
+            f"got R={r_grey} G={g_grey} B={b_grey}"
+        )
+
+    def test_all_zero_input_returns_unchanged(self):
+        composite = np.zeros((4, 4, 4), dtype=np.uint16)
+        result = normalize_composite(composite)
+        np.testing.assert_array_equal(result, composite)
+
+    def test_nir_band_unchanged(self):
+        """Band index ≥ 3 must be left untouched."""
+        composite = np.zeros((4, 4, 4), dtype=np.uint16)
+        composite[0] = 1000
+        composite[1] = 2000
+        composite[2] = 500
+        composite[3] = 9999  # NIR — must survive unchanged
+        result = normalize_composite(composite)
+        np.testing.assert_array_equal(result[3], composite[3])
