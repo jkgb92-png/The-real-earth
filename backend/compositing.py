@@ -97,9 +97,39 @@ def median_composite(tile_paths: List[str]) -> np.ndarray:
     return np.clip(composite, 0, 65535).astype(np.uint16)
 
 
+def normalize_composite(
+    composite: np.ndarray,
+    p_low: float = 2.0,
+    p_high: float = 98.0,
+) -> np.ndarray:
+    """
+    Apply a per-band percentile stretch to a (bands, H, W) uint16 array.
+
+    Maps each of the first three (RGB) bands' [p_low, p_high] percentile range
+    to [0, 65535] and clips outliers.  Bands beyond index 2 (e.g. NIR) are
+    passed through unchanged.  Using the same relative stretch for every tile
+    ensures that adjacent tiles composited from passes with different
+    illumination or atmospheric conditions appear at a consistent brightness
+    level, reducing the visible colour seams at tile boundaries.
+    """
+    result = composite.copy()
+    for b in range(min(3, composite.shape[0])):
+        band = composite[b].astype(np.float32)
+        valid = band[band > 0]
+        if valid.size == 0:
+            continue
+        lo = float(np.percentile(valid, p_low))
+        hi = float(np.percentile(valid, p_high))
+        if hi <= lo:
+            continue
+        result[b] = np.clip((band - lo) / (hi - lo) * 65535.0, 0.0, 65535.0).astype(np.uint16)
+    return result
+
+
 def composite_to_webp(composite: np.ndarray) -> bytes:
     """Convert (bands, H, W) uint16 composite to WebP bytes."""
-    rgb = (composite[:3] / 256).astype(np.uint8)
+    normalized = normalize_composite(composite)
+    rgb = (normalized[:3] / 256).astype(np.uint8)
     img = Image.fromarray(np.moveaxis(rgb, 0, -1))
     buf = io.BytesIO()
     img.save(buf, format="WEBP", quality=90)
@@ -108,7 +138,8 @@ def composite_to_webp(composite: np.ndarray) -> bytes:
 
 def composite_to_png(composite: np.ndarray) -> bytes:
     """Convert (bands, H, W) uint16 composite to PNG bytes."""
-    rgb = (composite[:3] / 256).astype(np.uint8)
+    normalized = normalize_composite(composite)
+    rgb = (normalized[:3] / 256).astype(np.uint8)
     img = Image.fromarray(np.moveaxis(rgb, 0, -1))
     buf = io.BytesIO()
     img.save(buf, format="PNG", optimize=True)

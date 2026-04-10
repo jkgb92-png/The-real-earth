@@ -91,7 +91,7 @@ const gibsLayer: RasterLayerSpecification = {
   source: 'gibs',
   // Cap at z=9: above this ESRI takes over, preventing blurry upscaling of z=8 tiles.
   maxzoom: 9,
-  paint: { 'raster-opacity': 1, 'raster-resampling': 'nearest' },
+  paint: { 'raster-opacity': 1, 'raster-resampling': 'nearest', 'raster-fade-duration': 0 },
 };
 
 const esriLayer: RasterLayerSpecification = {
@@ -101,7 +101,7 @@ const esriLayer: RasterLayerSpecification = {
   // Start at z=8 so ESRI overlaps GIBS at its native ceiling, closing the
   // z=8–9 gap that previously let blurry upscaled GIBS tiles show through.
   minzoom: 8,
-  paint: { 'raster-opacity': 1, 'raster-resampling': 'nearest' },
+  paint: { 'raster-opacity': 1, 'raster-resampling': 'nearest', 'raster-fade-duration': 0 },
 };
 
 const sentinelLayer: RasterLayerSpecification = {
@@ -109,14 +109,15 @@ const sentinelLayer: RasterLayerSpecification = {
   type: 'raster',
   source: 'sentinel',
   minzoom: 10,
-  paint: { 'raster-opacity': 1, 'raster-resampling': 'nearest' },
+  paint: { 'raster-opacity': 1, 'raster-resampling': 'nearest', 'raster-fade-duration': 0 },
 };
 
 const bathymetryLayer: RasterLayerSpecification = {
   id: 'bathymetry-layer',
   type: 'raster',
   source: 'bathymetry',
-  paint: { 'raster-opacity': 0.75, 'raster-resampling': 'nearest' },
+  // Rendered above ESRI so the ocean-depth shading is visible as an overlay.
+  paint: { 'raster-opacity': 0.75, 'raster-resampling': 'nearest', 'raster-fade-duration': 0 },
 };
 
 const terminatorFillLayer: FillLayerSpecification = {
@@ -309,19 +310,6 @@ export function EarthWebMap() {
           <Layer {...gibsLayer} />
         </Source>
 
-        {/* Bathymetry: ESRI Ocean Basemap (GEBCO-derived depth shading) */}
-        {layers.bathymetry && (
-          <Source
-            id="bathymetry"
-            type="raster"
-            tiles={[ESRI_OCEAN_BASEMAP_URL]}
-            tileSize={256}
-            maxzoom={12}
-          >
-            <Layer {...bathymetryLayer} />
-          </Source>
-        )}
-
         {/* High-res gap-fill: ESRI World Imagery (z ≥ 9).
             Always active so that areas without Sentinel-2 coverage (e.g.
             Antarctica) are rendered sharply instead of being upscaled from
@@ -336,6 +324,21 @@ export function EarthWebMap() {
         >
           <Layer {...esriLayer} />
         </Source>
+
+        {/* Bathymetry: ESRI Ocean Basemap (GEBCO-derived depth shading).
+            Placed above ESRI World Imagery so the semi-transparent ocean-depth
+            overlay is actually visible instead of being hidden beneath it. */}
+        {layers.bathymetry && (
+          <Source
+            id="bathymetry"
+            type="raster"
+            tiles={[ESRI_OCEAN_BASEMAP_URL]}
+            tileSize={256}
+            maxzoom={12}
+          >
+            <Layer {...bathymetryLayer} />
+          </Source>
+        )}
 
         {/* High-res overlay: Sentinel-2 cloud-free composite */}
         {layers.sentinel && TILE_SERVER_AVAILABLE && (

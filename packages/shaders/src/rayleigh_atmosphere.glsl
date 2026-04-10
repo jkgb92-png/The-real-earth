@@ -36,7 +36,9 @@ void main() {
 
     // Rayleigh scale height ≈ 8 500 m — scattering diminishes exponentially
     // with altitude.  At sea level scatter ≈ 1.0; at 100 km it is ~0.0.
-    float scatter = exp(-altitude / 8500.0);
+    // Guard against altitude ≤ 0 (camera below ellipsoid at init or deep zoom)
+    // which would make exp() return > 1 and extrapolate colors out of range.
+    float scatter = exp(-max(altitude, 0.0) / 8500.0);
 
     // Primary blue-sky scatter colour.
     vec3 blueScatter = vec3(0.18, 0.36, 0.72);
