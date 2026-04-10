@@ -45,6 +45,19 @@
     const tileServer = params.get('tileServer') || 'http://localhost:8000';
     const cesiumToken = params.get('cesiumToken') || '';
 
+    // When the tile server is not available (e.g. GitHub Pages static
+    // deployment) fall back to fetching GIBS Blue Marble tiles directly.
+    const GIBS_DIRECT =
+      'https://gibs.earthdata.nasa.gov/wmts/epsg3857/best' +
+      '/BlueMarble_NextGeneration/default/2004-08-01' +
+      '/GoogleMapsCompatible_Level8/{z}/{reverseY}/{x}.jpg';
+
+    const TILE_SERVER_DEFAULT = 'http://localhost:8000';
+    const gibsUrl =
+      tileServer && tileServer !== TILE_SERVER_DEFAULT
+        ? `${tileServer}/tiles/gibs/{z}/{x}/{reverseY}.jpg`
+        : GIBS_DIRECT;
+
     if (cesiumToken) Cesium.Ion.defaultAccessToken = cesiumToken;
 
     // ── Viewer ──────────────────────────────────────────────────────────────
@@ -62,10 +75,10 @@
     });
 
     // ── Phase 4.1: NASA GIBS Blue Marble base + Black Marble city lights ────
-    // Blue Marble (day)
+    // Blue Marble (day) — use direct GIBS URL when no tile server is available
     viewer.imageryLayers.addImageryProvider(
       new Cesium.UrlTemplateImageryProvider({
-        url: `${tileServer}/tiles/gibs/{z}/{x}/{reverseY}.jpg`,
+        url: gibsUrl,
         maximumLevel: 8,
         credit: 'NASA GIBS / Blue Marble',
       })
@@ -74,10 +87,10 @@
     // ESRI World Imagery — high-resolution gap-fill above z=8.
     // Keeps tiles sharp when zoomed in (Antarctica, coast detail, etc.)
     // instead of letting CesiumJS upscale the z=8 GIBS tiles.
+    // No minimumLevel so ESRI always shows as the primary imagery layer.
     viewer.imageryLayers.addImageryProvider(
       new Cesium.UrlTemplateImageryProvider({
         url: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
-        minimumLevel: 8,
         maximumLevel: 19,
         credit: 'Esri World Imagery',
       })
@@ -142,6 +155,7 @@
     );
 
     viewer.scene.globe.enableLighting = true;
+    viewer.scene.globe.baseColor = Cesium.Color.fromCssColorString('#050814');
     viewer.scene.skyAtmosphere.show = true;
     viewer.scene.skyAtmosphere.hueShift = -0.03;
     viewer.scene.skyAtmosphere.saturationShift = 0.1;
