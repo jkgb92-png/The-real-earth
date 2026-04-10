@@ -102,11 +102,12 @@ const esriLayer: RasterLayerSpecification = {
   source: 'esri',
   // Start at z=8 so ESRI overlaps GIBS at its native ceiling, closing the
   // z=8–9 gap that previously let blurry upscaled GIBS tiles show through.
-  // Cap at z=19 (ESRI's native max): above this, overzoomed ESRI tiles are
-  // gray for many areas, so we let the GIBS overzoom layer show instead.
+  // The layer renders at all map zooms (no maxzoom cap): the source maxzoom
+  // of 14 means MapLibre overzooms z=14 tiles at higher map zooms rather
+  // than fetching tiles that ESRI returns as placeholders for uncovered areas.
+  // Use linear resampling so the overzoomed tiles blend smoothly.
   minzoom: 8,
-  maxzoom: 19,
-  paint: { 'raster-opacity': 1, 'raster-resampling': 'nearest', 'raster-fade-duration': 0 },
+  paint: { 'raster-opacity': 1, 'raster-resampling': 'linear', 'raster-fade-duration': 0 },
 };
 
 const sentinelLayer: RasterLayerSpecification = {
@@ -315,17 +316,21 @@ export function EarthWebMap() {
           <Layer {...gibsLayer} />
         </Source>
 
-        {/* High-res gap-fill: ESRI World Imagery (z ≥ 9).
+        {/* High-res gap-fill: ESRI World Imagery (z ≥ 8).
             Always active so that areas without Sentinel-2 coverage (e.g.
             Antarctica) are rendered sharply instead of being upscaled from
             the z=8 GIBS Blue Marble. Falls back gracefully below Sentinel-2
-            where the tile server is available. */}
+            where the tile server is available.
+            Source maxzoom is capped at 14: ESRI has near-global Landsat
+            coverage at that level, so MapLibre overzooms z=14 tiles at higher
+            map zooms instead of fetching z>14 tiles that ESRI returns as
+            "Map data not yet available" placeholders for uncovered areas. */}
         <Source
           id="esri"
           type="raster"
           tiles={[ESRI_WORLD_IMAGERY_URL]}
           tileSize={256}
-          maxzoom={19}
+          maxzoom={14}
         >
           <Layer {...esriLayer} />
         </Source>
