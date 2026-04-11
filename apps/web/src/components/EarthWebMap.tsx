@@ -119,7 +119,9 @@ const gibsLayer: RasterLayerSpecification = {
   // continues to overzoom them at higher map zooms so there is always a base
   // image underneath ESRI (preventing the "Map data not yet available" gap
   // when ESRI tiles fail to load or have no coverage for a given area).
-  paint: { 'raster-opacity': 1, 'raster-resampling': 'nearest', 'raster-fade-duration': 300 },
+  // fade-duration=0: tiles pop in instantly — no blurry upscaled parent tile
+  // during the 300 ms fade window.
+  paint: { 'raster-opacity': 1, 'raster-resampling': 'nearest', 'raster-fade-duration': 0 },
 };
 
 const esriLayer: RasterLayerSpecification = {
@@ -134,7 +136,10 @@ const esriLayer: RasterLayerSpecification = {
   // satellite coverage for polar regions and now renders from zoom 2
   // upward, fully replacing GIBS wherever ESRI has data.
   minzoom: 2,
-  paint: { 'raster-opacity': 1, 'raster-resampling': 'nearest', 'raster-fade-duration': 300 },
+  // fade-duration=0: tiles pop in instantly — eliminates the blurry upscaled
+  // parent tile that was visible during the 300 ms cross-fade window, which
+  // was particularly noticeable over featureless ocean areas.
+  paint: { 'raster-opacity': 1, 'raster-resampling': 'nearest', 'raster-fade-duration': 0 },
 };
 
 const sentinelLayer: RasterLayerSpecification = {
@@ -557,12 +562,14 @@ export function EarthWebMap() {
             reliable coverage at z=17. Setting maxzoom higher causes 404s for
             remote/low-density areas at z=18–19 which trigger the
             "Map data not yet available" placeholder; at z=17 MapLibre
-            overzooms the tile instead, keeping the map visible everywhere. */}
+            overzooms the tile instead, keeping the map visible everywhere.
+            tileSize uses retinaTileSize (128 on DPR≥2) so that HiDPI screens
+            request z+1 tiles, matching the sharpness strategy used for GIBS. */}
         <Source
           id="esri"
           type="raster"
           tiles={[ESRI_WORLD_IMAGERY_URL]}
-          tileSize={256}
+          tileSize={retinaTileSize}
           maxzoom={17}
         >
           <Layer {...esriLayer} />
@@ -588,13 +595,16 @@ export function EarthWebMap() {
             On static/GitHub Pages deployments, fall back to EOX Sentinel-2
             Cloudless 2020 (free, no auth required, global coverage up to z=14;
             MapLibre overzooms z=14 tiles at higher map zooms).
-            tileSize is kept at 256 (both sources' native output size). */}
+            tileSize is kept at 256 (both sources' native output size).
+            minzoom=10 matches the server's minimum zoom so MapLibre never
+            fires tile requests below z=10 (which always 404 on our backend). */}
         {layers.sentinel && (
           <Source
             id="sentinel"
             type="raster"
             tiles={[TILE_SERVER_AVAILABLE ? sentinelTileUrl : EOX_SENTINEL_URL]}
             tileSize={256}
+            minzoom={10}
             maxzoom={TILE_SERVER_AVAILABLE ? 25 : 14}
           >
             <Layer {...sentinelLayer} />

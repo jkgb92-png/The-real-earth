@@ -177,14 +177,18 @@ export function EarthMapView({
         />
       </RasterSource>
 
-      {/* Gap-fill: ESRI World Imagery (z ≥ 8, up to z=19).
+      {/* Gap-fill: ESRI World Imagery (z ≥ 8, up to z=17).
           Starts at z=8 so there is no blur window between GIBS and Sentinel:
-          Antarctica and other Sentinel-2-free areas stay sharp at any zoom. */}
+          Antarctica and other Sentinel-2-free areas stay sharp at any zoom.
+          maxZoomLevel capped at 17 to match near-global ESRI coverage; above
+          z=17, MapboxGL overzooms the z=17 tile (blurry but visible) rather
+          than firing requests that 404 in open ocean and other sparse areas,
+          which would leave blank hidden tiles on-screen. */}
       <RasterSource
         id="esri-source"
         tileUrlTemplates={[esriUrl]}
         tileSize={256}
-        maxZoomLevel={19}
+        maxZoomLevel={17}
       >
         <RasterLayer
           id="esri-layer"

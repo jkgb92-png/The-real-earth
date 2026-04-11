@@ -86,11 +86,14 @@ function buildGlobeHtml(tileServerUrl: string, cesiumIonToken: string, shader: s
     );
 
     // ESRI World Imagery — high-resolution gap-fill above z=8.
+    // maximumLevel capped at 17: above this level ESRI 404s in open ocean and
+    // sparse areas; Cesium will overzoom the z=17 tile (keeping it visible)
+    // instead of showing a blank/missing-tile placeholder.
     viewer.imageryLayers.addImageryProvider(
       new Cesium.UrlTemplateImageryProvider({
         url: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
         minimumLevel: 8,
-        maximumLevel: 19,
+        maximumLevel: 17,
         credit: 'Esri World Imagery',
       })
     );
