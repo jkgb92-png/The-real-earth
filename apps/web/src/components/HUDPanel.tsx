@@ -19,6 +19,8 @@ export interface ActiveLayers {
   terminator: boolean;
   iss: boolean;
   sentinel: boolean;
+  ndvi: boolean;
+  sar: boolean;
   bathymetry: boolean;
   borders: boolean;
   labels: boolean;
@@ -48,13 +50,15 @@ export function HUDPanel({ lat, lon, zoom, activeLayers }: Props) {
   const utcTime = useUTCClock();
 
   const layerRows: Array<{ key: keyof ActiveLayers; label: string; icon: string }> = [
-    { key: 'sentinel',    label: 'Sentinel-2',    icon: '📡' },
-    { key: 'bathymetry',  label: 'Bathymetry',    icon: '🌊' },
-    { key: 'terminator',  label: 'Day/Night',      icon: '🌙' },
-    { key: 'clouds',      label: 'Live Clouds',    icon: '☁' },
-    { key: 'iss',         label: 'ISS Tracker',    icon: '🛰' },
-    { key: 'borders',     label: 'Borders',        icon: '🗺️' },
-    { key: 'labels',      label: 'Country Names',  icon: '🔤' },
+    { key: 'sentinel',    label: 'Sentinel-2 RGB',        icon: '🌍' },
+    { key: 'ndvi',        label: 'Vegetation (NDVI)',      icon: '🌿' },
+    { key: 'sar',         label: 'Cloud-Piercing (SAR)',   icon: '📡' },
+    { key: 'bathymetry',  label: 'Bathymetry',             icon: '🌊' },
+    { key: 'terminator',  label: 'Day/Night',               icon: '🌙' },
+    { key: 'clouds',      label: 'Live Clouds',             icon: '☁' },
+    { key: 'iss',         label: 'ISS Tracker',             icon: '🛰' },
+    { key: 'borders',     label: 'Borders',                 icon: '🗺️' },
+    { key: 'labels',      label: 'Country Names',           icon: '🔤' },
   ];
 
   return (

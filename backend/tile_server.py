@@ -28,7 +28,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from .compositing import app as compositing_app, get_composite_tile
 from .config import Settings
-from .ndvi import app as ndvi_app
+from .ndvi import get_ndvi_tile
 
 settings = Settings()
 

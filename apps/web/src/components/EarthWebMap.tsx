@@ -24,7 +24,7 @@
  *  - Debounced viewport callbacks for tile prefetching (150 ms)
  */
 
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import Map, {
   FillLayerSpecification,
   Layer,
@@ -40,8 +40,11 @@ import { GlobeIframe } from './GlobeIframe';
 import { HUDPanel } from './HUDPanel';
 import { LayerDock, LayerState } from './LayerDock';
 import { ISSMarker } from './ISSMarker';
+import { LayerSwitcher, BaseLayerId } from './LayerSwitcher';
+import { SwipeCompare } from './SwipeCompare';
 import { useTilePrefetch } from '../hooks/useTilePrefetch';
 import { SavedLocationsPanel, SavedLocation } from './SavedLocationsPanel';
+import { WorkerTileCache } from '@the-real-earth/tile-cache';
 
 const DEFAULT_TILE_SERVER_URL = 'http://localhost:8000';
 
@@ -65,6 +68,8 @@ const gibsTileUrl = TILE_SERVER_AVAILABLE
   : GIBS_DIRECT_URL;
 
 const sentinelTileUrl = `${TILE_SERVER_URL}/tiles/sentinel/{z}/{x}/{y}`;
+const ndviTileUrl = `${TILE_SERVER_URL}/tiles/ndvi/{z}/{x}/{y}`;
+const sarTileUrl = `${TILE_SERVER_URL}/tiles/sar/{z}/{x}/{y}`;
 
 // Free ESRI World Imagery tiles – up to zoom 19, no auth required.
 // Used as a high-resolution gap-fill at z ≥ 9 to cover areas (e.g. Antarctica)
@@ -130,6 +135,22 @@ const sentinelLayer: RasterLayerSpecification = {
   type: 'raster',
   source: 'sentinel',
   minzoom: 10,
+  paint: { 'raster-opacity': 1, 'raster-resampling': 'nearest', 'raster-fade-duration': 300 },
+};
+
+const ndviLayer: RasterLayerSpecification = {
+  id: 'ndvi-layer',
+  type: 'raster',
+  source: 'ndvi',
+  minzoom: 10,
+  paint: { 'raster-opacity': 1, 'raster-resampling': 'nearest', 'raster-fade-duration': 300 },
+};
+
+const sarLayer: RasterLayerSpecification = {
+  id: 'sar-layer',
+  type: 'raster',
+  source: 'sar',
+  minzoom: 6,
   paint: { 'raster-opacity': 1, 'raster-resampling': 'nearest', 'raster-fade-duration': 300 },
 };
 
@@ -246,7 +267,12 @@ export function EarthWebMap() {
     bathymetry: false,
     borders: false,
     labels: false,
+    ndvi: false,
+    sar: false,
+    swipe: false,
   });
+  // Active base layer for the LayerSwitcher (rgb / ndvi / sar)
+  const [activeBaseLayer, setActiveBaseLayer] = useState<BaseLayerId>('rgb');
   const [cursorLat, setCursorLat] = useState(20);
   const [cursorLon, setCursorLon] = useState(0);
   const [zoom, setZoom] = useState(2);
@@ -338,6 +364,15 @@ export function EarthWebMap() {
   const mapRef = useRef<MapRef | null>(null);
 
   /**
+   * WorkerTileCache — off-thread tile pre-fetcher using Cache API.
+   * Created once per component mount; destroyed on unmount.
+   * Falls back gracefully to the `new Image()` path when Web Workers are
+   * unavailable (e.g. SSR, certain CSP configurations).
+   */
+  const workerCache = useMemo(() => new WorkerTileCache(), []);
+  useEffect(() => () => workerCache.destroy(), [workerCache]);
+
+  /**
    * Active tile URL templates for pre-fetching.
    * Always include the base layers; conditionally add optional layers.
    * URLs must use {z}/{x}/{y} substitution tokens.
@@ -350,10 +385,12 @@ export function EarthWebMap() {
     gibsTileUrl,
     ESRI_WORLD_IMAGERY_URL,
     ...(layers.sentinel && TILE_SERVER_AVAILABLE ? [sentinelTileUrl] : []),
+    ...(layers.ndvi && TILE_SERVER_AVAILABLE ? [ndviTileUrl] : []),
+    ...(layers.sar && TILE_SERVER_AVAILABLE ? [sarTileUrl] : []),
     ...(layers.bathymetry ? [ESRI_OCEAN_BASEMAP_URL] : []),
   ];
 
-  const prefetch = useTilePrefetch(prefetchTemplates);
+  const prefetch = useTilePrefetch(prefetchTemplates, 24, workerCache);
 
   // Update terminator every 60 s
   useEffect(() => {
@@ -420,6 +457,20 @@ export function EarthWebMap() {
     setMode((m) => (m === 'map' ? 'globe' : 'map'));
   }
 
+  // Swipe Compare mode — renders a full-screen dual-map overlay
+  if (layers.swipe) {
+    return (
+      <SwipeCompare
+        tileServerUrl={TILE_SERVER_URL}
+        historicalYear={2024}
+        initialLng={cursorLon}
+        initialLat={cursorLat}
+        initialZoom={Math.max(zoom, 3)}
+        onClose={() => setLayers((prev) => ({ ...prev, swipe: false }))}
+      />
+    );
+  }
+
   if (mode === 'globe') {
     return (
       <div style={{ position: 'relative', width: '100%', height: '100%' }}>
@@ -439,6 +490,8 @@ export function EarthWebMap() {
     terminator: layers.terminator,
     iss: layers.iss,
     sentinel: layers.sentinel,
+    ndvi: layers.ndvi,
+    sar: layers.sar,
     bathymetry: layers.bathymetry,
     borders: layers.borders,
     labels: layers.labels,
@@ -562,6 +615,34 @@ export function EarthWebMap() {
           </Source>
         )}
 
+        {/* Vegetation health overlay: NDVI colourised (NIR−Red)/(NIR+Red) */}
+        {layers.ndvi && TILE_SERVER_AVAILABLE && (
+          <Source
+            id="ndvi"
+            type="raster"
+            tiles={[ndviTileUrl]}
+            tileSize={256}
+            minzoom={10}
+            maxzoom={25}
+          >
+            <Layer {...ndviLayer} />
+          </Source>
+        )}
+
+        {/* Cloud-piercing SAR: Sentinel-1 grayscale backscatter */}
+        {layers.sar && TILE_SERVER_AVAILABLE && (
+          <Source
+            id="sar"
+            type="raster"
+            tiles={[sarTileUrl]}
+            tileSize={256}
+            minzoom={6}
+            maxzoom={20}
+          >
+            <Layer {...sarLayer} />
+          </Source>
+        )}
+
         {/* Country borders: Natural Earth 110m GeoJSON line layer */}
         {layers.borders && bordersGeoJSON && (
           <Source id="countries" type="geojson" data={bordersGeoJSON}>
@@ -652,6 +733,23 @@ export function EarthWebMap() {
         zoom={zoom}
         activeLayers={activeLayers}
       />
+
+      {/* Layer Switcher — top-centre segmented control for RGB / NDVI / SAR */}
+      {TILE_SERVER_AVAILABLE && (
+        <LayerSwitcher
+          activeLayer={activeBaseLayer}
+          onLayerChange={(id) => {
+            setActiveBaseLayer(id);
+            // Mirror into LayerState so the relevant overlay source is shown
+            setLayers((prev) => ({
+              ...prev,
+              sentinel: id === 'rgb',
+              ndvi: id === 'ndvi',
+              sar: id === 'sar',
+            }));
+          }}
+        />
+      )}
 
       {/* Layer Dock */}
       <LayerDock
