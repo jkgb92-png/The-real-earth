@@ -7,14 +7,23 @@
  *
  * Given the current map viewport, this hook calculates every tile coordinate
  * visible on screen plus a 1-tile border in all directions (to pre-load tiles
- * the user is likely to pan into), and schedules them as low-priority Image
- * fetches. The browser caches the responses so that when MapLibre requests the
- * same URLs a moment later they are served instantly from cache — eliminating
- * the blank → blurry → sharp progression visible during fast panning/zooming.
+ * the user is likely to pan into), and schedules them as low-priority fetches.
+ *
+ * Two prefetch strategies are supported:
+ *
+ *  1. Default (no `workerCache`): uses `new Image().src` so tiles land in the
+ *     browser's volatile image/HTTP cache — fast and zero-dependency, but not
+ *     guaranteed to survive across page reloads.
+ *
+ *  2. WorkerTileCache: delegates to a background Web Worker that stores tiles
+ *     in the Cache API.  This is a persistent, URL-keyed store that survives
+ *     page reloads and is shared across tabs.  Use this for the primary
+ *     Sentinel / NDVI / SAR layers where cold-start blurriness matters most.
  *
  * Usage
  * -----
- *   const prefetch = useTilePrefetch([ESRI_URL, gibsTileUrl]);
+ *   const workerCache = useMemo(() => new WorkerTileCache(), []);
+ *   const prefetch = useTilePrefetch([ESRI_URL, sentinelTileUrl], 24, workerCache);
  *
  *   // in onMove debounce handler:
  *   const bounds = mapRef.current.getBounds();
@@ -22,11 +31,11 @@
  *
  * Notes
  * -----
- * - `new Image().src` is used rather than `fetch()` because tile responses are
- *   images; the browser stores them in the image cache (shared with <img> and
- *   MapLibre's internal XHR cache).
+ * - `new Image().src` is used (for the non-worker path) rather than `fetch()`
+ *   because tile responses are images; the browser stores them in the image
+ *   cache (shared with <img> and MapLibre's internal XHR cache).
  * - Already-prefetched URLs are remembered in a ref-based Set and skipped on
- *   subsequent calls so no tile is fetched twice per session.
+ *   subsequent calls so no tile is fetched twice per session (both paths).
  * - The cap of `maxTiles` (default 24) keeps each pan from spawning dozens of
  *   simultaneous requests on slow connections.
  * - Retina / high-DPR screens: pass the same zoom the Map component is using
@@ -34,6 +43,7 @@
  */
 
 import { useCallback, useRef } from 'react';
+import type { WorkerTileCache } from '@the-real-earth/tile-cache';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -87,10 +97,15 @@ function buildTileUrl(template: string, z: number, x: number, y: number): string
  *
  * @param tileUrlTemplates  Array of URL templates containing `{z}`, `{x}`, `{y}`.
  * @param maxTiles          Maximum tiles to schedule per `prefetch()` call (default 24).
+ * @param workerCache       Optional WorkerTileCache instance. When provided, tiles
+ *                          are fetched off-thread and stored in the Cache API
+ *                          (persistent across page reloads). When omitted the
+ *                          default `new Image().src` browser-cache path is used.
  */
 export function useTilePrefetch(
   tileUrlTemplates: string[],
   maxTiles = 24,
+  workerCache?: WorkerTileCache | null,
 ): (viewport: TilePrefetchViewport) => void {
   /** URLs already pre-fetched this session — avoids redundant requests. */
   const seen = useRef<Set<string>>(new Set());
@@ -121,18 +136,24 @@ export function useTilePrefetch(
             if (seen.current.has(url)) continue;
             seen.current.add(url);
 
-            // `new Image()` shares the browser's image cache with MapLibre.
-            // Setting .src schedules a low-priority background fetch; no need
-            // to attach the element to the DOM or handle load events.
-            const img = new Image();
-            img.src = url;
+            if (workerCache) {
+              // Off-thread persistent caching via Cache API worker
+              workerCache.prefetch(url);
+            } else {
+              // `new Image()` shares the browser's image cache with MapLibre.
+              // Setting .src schedules a low-priority background fetch; no need
+              // to attach the element to the DOM or handle load events.
+              const img = new Image();
+              img.src = url;
+            }
             fetched++;
           }
         }
       }
     },
-    // Recompute only when the set of template URLs or the cap changes.
+    // Recompute only when the set of template URLs, cap, or workerCache changes.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [tileUrlTemplates.join('\0'), maxTiles],
+    [tileUrlTemplates.join('\0'), maxTiles, workerCache],
   );
 }
+

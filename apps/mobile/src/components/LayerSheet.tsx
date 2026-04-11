@@ -26,6 +26,8 @@ export interface LayerState {
   terminator: boolean;
   iss: boolean;
   sentinel: boolean;
+  ndvi: boolean;
+  sar: boolean;
 }
 
 interface Props {
@@ -35,7 +37,7 @@ interface Props {
   onClose: () => void;
 }
 
-const SHEET_HEIGHT = 320;
+const SHEET_HEIGHT = 460;
 const { height: SCREEN_HEIGHT } = Dimensions.get('window');
 
 const LAYER_ITEMS: Array<{
@@ -45,10 +47,12 @@ const LAYER_ITEMS: Array<{
   description: string;
   activeColor: string;
 }> = [
-  { key: 'sentinel',   icon: '📡', label: 'Sentinel-2',   description: 'High-res cloud-free overlay (z≥10)',  activeColor: '#f59e0b' },
-  { key: 'terminator', icon: '🌙', label: 'Day / Night',   description: 'Real-time day/night terminator',      activeColor: '#a78bfa' },
-  { key: 'clouds',     icon: '☁️',  label: 'Live Clouds',   description: 'OpenWeatherMap cloud tiles',          activeColor: '#6dd5fa' },
-  { key: 'iss',        icon: '🛰',  label: 'ISS Tracker',   description: 'Live ISS position & trail',          activeColor: '#34d399' },
+  { key: 'sentinel',   icon: '🌍', label: 'Sentinel-2 RGB',        description: 'High-res cloud-free composite (z≥10)',   activeColor: '#f59e0b' },
+  { key: 'ndvi',       icon: '🌿', label: 'Vegetation (NDVI)',      description: 'NDVI: (NIR−Red)/(NIR+Red) health index', activeColor: '#4ade80' },
+  { key: 'sar',        icon: '📡', label: 'Cloud-Piercing (SAR)',   description: 'Sentinel-1 SAR backscatter (all weather)', activeColor: '#94a3b8' },
+  { key: 'terminator', icon: '🌙', label: 'Day / Night',             description: 'Real-time day/night terminator',          activeColor: '#a78bfa' },
+  { key: 'clouds',     icon: '☁️',  label: 'Live Clouds',            description: 'OpenWeatherMap cloud tiles',              activeColor: '#6dd5fa' },
+  { key: 'iss',        icon: '🛰',  label: 'ISS Tracker',            description: 'Live ISS position & trail',              activeColor: '#34d399' },
 ];
 
 export function LayerSheet({ visible, layers, onToggle, onClose }: Props): React.ReactElement {

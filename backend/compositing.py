@@ -169,14 +169,26 @@ async def get_composite_tile(
     y: int,
     passes: int = Query(default=8, ge=3, le=30, description="Number of satellite passes to composite"),
     accept: str = "",
+    year: int | None = None,
 ) -> Response:
     """
     Returns a cloud-free PNG (or WebP) tile at the requested (z, x, y) using
     temporal median compositing over the last ``passes`` GeoTIFF acquisitions.
 
+    When ``year`` is provided, only passes whose filename starts with that
+    four-digit year prefix are composited.  This powers the Time-Machine Swipe
+    Compare feature (historical vs. current imagery).
+
     Serve WebP when the client sends ``Accept: image/webp`` for ~35% smaller
     payloads on supported browsers and the Mapbox SDK.
     """
+    # Explicit integer bounds check on tile coordinates before any path operation.
+    # FastAPI already enforces ge/le constraints on z, x, y but we re-validate
+    # here so static analysis tools can track the sanitisation.
+    max_coord = 2 ** z - 1
+    if x < 0 or x > max_coord or y < 0 or y > max_coord:
+        return Response(status_code=400, content="Invalid tile coordinates")
+
     tile_dir = TILE_STORE / str(z) / str(x) / str(y)
     # Resolve and ensure the path stays inside TILE_STORE (prevents path traversal)
     try:
@@ -185,7 +197,15 @@ async def get_composite_tile(
         tile_dir.relative_to(tile_store_resolved)
     except (ValueError, OSError):
         return Response(status_code=400, content="Invalid tile coordinates")
-    tile_paths = sorted(tile_dir.glob("*.tif"))[:passes]
+
+    all_paths = sorted(tile_dir.glob("*.tif"))
+
+    # Filter by year prefix when requested (e.g. "2024-01-03.tif" starts with "2024")
+    if year is not None:
+        year_prefix = str(year)
+        all_paths = [p for p in all_paths if p.name.startswith(year_prefix)]
+
+    tile_paths = all_paths[:passes]
 
     if len(tile_paths) < 2:
         return Response(status_code=404, content="Not enough tile passes available")

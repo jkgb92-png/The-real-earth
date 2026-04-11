@@ -17,7 +17,7 @@ import {
   Text,
   View,
 } from 'react-native';
-import { EarthMapView, GlobeView } from '@the-real-earth/map-core';
+import { EarthMapView, GlobeView, SwipeCompare } from '@the-real-earth/map-core';
 import { OfflinePackModal } from '../components/OfflinePackModal';
 import { LayerSheet, LayerState } from '../components/LayerSheet';
 
@@ -43,11 +43,14 @@ export function HomeScreen(): React.ReactElement {
   const [mode, setMode] = useState<'map' | 'globe'>('map');
   const [showOfflineModal, setShowOfflineModal] = useState(false);
   const [showLayers, setShowLayers] = useState(false);
+  const [swipeMode, setSwipeMode] = useState(false);
   const [layers, setLayers] = useState<LayerState>({
     sentinel: true,
     terminator: true,
     iss: true,
     clouds: false,
+    ndvi: false,
+    sar: false,
   });
 
   const toggleMode = useCallback(() => {
@@ -62,18 +65,30 @@ export function HomeScreen(): React.ReactElement {
 
   return (
     <SafeAreaView style={styles.container}>
-      {mode === 'map' ? (
+      {/* Swipe Compare mode — full-screen, replaces normal map view */}
+      {swipeMode ? (
+        <SwipeCompare
+          accessToken={MAPBOX_TOKEN}
+          tileServerUrl={TILE_SERVER_URL}
+          initialCenter={[0, 20]}
+          initialZoom={3}
+          historicalYear={2024}
+          onClose={() => setSwipeMode(false)}
+        />
+      ) : mode === 'map' ? (
         <EarthMapView
           accessToken={MAPBOX_TOKEN}
           tileServerUrl={TILE_SERVER_URL}
           initialCenter={[0, 20]}
           initialZoom={2}
+          activeLayer={layers.ndvi ? 'ndvi' : layers.sar ? 'sar' : 'rgb'}
         />
       ) : (
         <GlobeView tileServerUrl={TILE_SERVER_URL} cesiumIonToken={CESIUM_TOKEN} />
       )}
 
-      {/* Top-right controls */}
+      {/* Top-right controls — only show when not in swipe mode */}
+      {!swipeMode && (
       <View style={styles.controls}>
         {/* Mode toggle */}
         <Pressable
@@ -93,6 +108,14 @@ export function HomeScreen(): React.ReactElement {
           <Text style={styles.buttonText}>🗂 Layers</Text>
         </Pressable>
 
+        {/* Time-Machine Swipe Compare */}
+        <Pressable
+          style={styles.button}
+          onPress={() => { hapticImpact(); setSwipeMode(true); }}
+        >
+          <Text style={styles.buttonText}>⏳ Compare</Text>
+        </Pressable>
+
         {/* Offline download */}
         <Pressable
           style={styles.button}
@@ -101,14 +124,19 @@ export function HomeScreen(): React.ReactElement {
           <Text style={styles.buttonText}>⬇️ Offline</Text>
         </Pressable>
       </View>
+      )}
 
-      {/* Active layer indicator pills (bottom) */}
+      {/* Active layer indicator pills (bottom) — hidden in swipe mode */}
+      {!swipeMode && (
       <View style={styles.layerPills}>
-        {layers.sentinel   && <View style={[styles.pill, { borderColor: '#f59e0b44' }]}><Text style={[styles.pillText, { color: '#f59e0b' }]}>📡 Sentinel</Text></View>}
+        {layers.sentinel   && <View style={[styles.pill, { borderColor: '#f59e0b44' }]}><Text style={[styles.pillText, { color: '#f59e0b' }]}>🌍 RGB</Text></View>}
+        {layers.ndvi       && <View style={[styles.pill, { borderColor: '#4ade8044' }]}><Text style={[styles.pillText, { color: '#4ade80' }]}>🌿 NDVI</Text></View>}
+        {layers.sar        && <View style={[styles.pill, { borderColor: '#94a3b844' }]}><Text style={[styles.pillText, { color: '#94a3b8' }]}>📡 SAR</Text></View>}
         {layers.terminator && <View style={[styles.pill, { borderColor: '#a78bfa44' }]}><Text style={[styles.pillText, { color: '#a78bfa' }]}>🌙 Day/Night</Text></View>}
         {layers.iss        && <View style={[styles.pill, { borderColor: '#34d39944' }]}><Text style={[styles.pillText, { color: '#34d399' }]}>🛰 ISS</Text></View>}
         {layers.clouds     && <View style={[styles.pill, { borderColor: '#6dd5fa44' }]}><Text style={[styles.pillText, { color: '#6dd5fa' }]}>☁ Clouds</Text></View>}
       </View>
+      )}
 
       {/* Layer sheet */}
       <LayerSheet

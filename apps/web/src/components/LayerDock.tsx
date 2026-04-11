@@ -23,6 +23,9 @@ export interface LayerState {
   bathymetry: boolean;
   borders: boolean;
   labels: boolean;
+  ndvi: boolean;
+  sar: boolean;
+  swipe: boolean;
 }
 
 interface Props {
@@ -38,13 +41,16 @@ const ITEMS: Array<{
   label: string;
   activeColor: string;
 }> = [
-  { key: 'clouds',       icon: '☁',  label: 'Live Clouds',      activeColor: '#6dd5fa' },
-  { key: 'terminator',   icon: '🌙', label: 'Day/Night',         activeColor: '#a78bfa' },
-  { key: 'iss',          icon: '🛰', label: 'ISS Tracker',       activeColor: '#34d399' },
-  { key: 'sentinel',     icon: '📡', label: 'Sentinel-2',        activeColor: '#f59e0b' },
-  { key: 'bathymetry',   icon: '🌊', label: 'Bathymetry',        activeColor: '#22d3ee' },
-  { key: 'borders',      icon: '🗺️', label: 'Borders',           activeColor: '#c084fc' },
-  { key: 'labels',       icon: '🔤', label: 'Country Names',     activeColor: '#fb923c' },
+  { key: 'clouds',       icon: '☁',  label: 'Live Clouds',          activeColor: '#6dd5fa' },
+  { key: 'terminator',   icon: '🌙', label: 'Day/Night',             activeColor: '#a78bfa' },
+  { key: 'iss',          icon: '🛰', label: 'ISS Tracker',           activeColor: '#34d399' },
+  { key: 'sentinel',     icon: '🌍', label: 'Sentinel-2 RGB',        activeColor: '#f59e0b' },
+  { key: 'ndvi',         icon: '🌿', label: 'Vegetation (NDVI)',     activeColor: '#4ade80' },
+  { key: 'sar',          icon: '📡', label: 'Cloud-Piercing (SAR)',  activeColor: '#94a3b8' },
+  { key: 'swipe',        icon: '⏳', label: 'Time-Machine Compare',  activeColor: '#818cf8' },
+  { key: 'bathymetry',   icon: '🌊', label: 'Bathymetry',            activeColor: '#22d3ee' },
+  { key: 'borders',      icon: '🗺️', label: 'Borders',               activeColor: '#c084fc' },
+  { key: 'labels',       icon: '🔤', label: 'Country Names',         activeColor: '#fb923c' },
 ];
 
 export function LayerDock({ mode, layers, onModeToggle, onLayerToggle }: Props) {
@@ -175,6 +181,9 @@ function hexToRgbStr(hex: string): string {
     '#a78bfa': '167,139,250',
     '#34d399': '52,211,153',
     '#f59e0b': '245,158,11',
+    '#4ade80': '74,222,128',
+    '#94a3b8': '148,163,184',
+    '#818cf8': '129,140,248',
     '#22d3ee': '34,211,238',
     '#c084fc': '192,132,252',
     '#fb923c': '251,146,60',

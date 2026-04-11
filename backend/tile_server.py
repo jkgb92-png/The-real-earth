@@ -28,6 +28,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from .compositing import app as compositing_app, get_composite_tile
 from .config import Settings
+from .ndvi import get_ndvi_tile
 
 settings = Settings()
 
@@ -90,18 +91,170 @@ async def sentinel_tile(
     x: int = Path(ge=0),
     y: int = Path(ge=0),
     passes: int = Query(default=8, ge=3, le=30),
+    year: int | None = Query(
+        default=None,
+        ge=2000,
+        le=2100,
+        description=(
+            "Filter passes to those whose filename starts with this year "
+            "(e.g. 2024 for the Time-Machine Swipe Compare). "
+            "When omitted, all available passes are composited."
+        ),
+    ),
 ) -> Response:
     """
     Returns a cloud-free Sentinel-2 tile produced by median compositing.
+
+    The optional ``year`` query parameter restricts the compositing to GeoTIFF
+    passes whose filename begins with the specified four-digit year (e.g.
+    ``2024-01-03.tif``). This powers the Time-Machine Swipe Compare feature.
+
     Delegates to the compositing sub-app internally.
-    Only meaningful at z ≥ 10; returns 404 for coarser zooms.
+    Only meaningful at z >= 10; returns 404 for coarser zooms.
     """
     if z < 10:
-        return Response(status_code=404, content="Sentinel tiles only available at z≥10")
+        return Response(status_code=404, content="Sentinel tiles only available at z>=10")
 
     accept = request.headers.get("accept", "")
     # Re-use the compositing handler directly (avoids extra HTTP round-trip)
-    return await get_composite_tile(z=z, x=x, y=y, passes=passes, accept=accept)
+    return await get_composite_tile(z=z, x=x, y=y, passes=passes, accept=accept, year=year)
+
+
+# ---------------------------------------------------------------------------
+# NDVI tile endpoint
+# ---------------------------------------------------------------------------
+
+@app.get(
+    "/tiles/ndvi/{z}/{x}/{y}",
+    summary="Vegetation health (NDVI) tile",
+    response_class=Response,
+)
+async def ndvi_tile(
+    request: Request,
+    z: int = Path(ge=0, le=25),
+    x: int = Path(ge=0),
+    y: int = Path(ge=0),
+    passes: int = Query(default=8, ge=1, le=30),
+) -> Response:
+    """
+    Returns a colourised NDVI tile computed as (NIR - Red) / (NIR + Red).
+
+    Uses the same GeoTIFF tile store as the Sentinel-2 compositor.
+    Only meaningful at z >= 10; returns 404 for coarser zooms.
+    """
+    accept = request.headers.get("accept", "")
+    return await get_ndvi_tile(z=z, x=x, y=y, passes=passes, accept=accept)
+
+
+# ---------------------------------------------------------------------------
+# SAR tile endpoint
+# ---------------------------------------------------------------------------
+
+@app.get(
+    "/tiles/sar/{z}/{x}/{y}",
+    summary="Cloud-piercing SAR backscatter tile (grayscale)",
+    response_class=Response,
+)
+async def sar_tile(
+    request: Request,
+    z: int = Path(ge=0, le=25),
+    x: int = Path(ge=0),
+    y: int = Path(ge=0),
+) -> Response:
+    """
+    Returns a grayscale SAR backscatter tile from Sentinel-1 VV data.
+
+    When SAR_FEATURE_ENABLED=true: loads Sentinel-1 GeoTIFFs from
+    TILE_STORE/sar/{z}/{x}/{y}/, applies log-scale normalisation, and
+    returns a grayscale PNG.
+
+    When SAR_FEATURE_ENABLED=false and COPERNICUS_CLIENT_ID is set: proxies
+    tiles from the Copernicus Sentinel Hub WMS.
+
+    Returns 503 when neither data source is available.
+    """
+    from pathlib import Path as FsPath
+    import io as _io
+    import numpy as np
+    from PIL import Image as PILImage
+
+    accept = request.headers.get("accept", "")
+
+    if settings.sar_feature_enabled:
+        # Local Sentinel-1 backscatter GeoTIFFs
+        # Explicit integer bounds check before any path operation
+        max_coord = 2 ** z - 1
+        if x < 0 or x > max_coord or y < 0 or y > max_coord:
+            return Response(status_code=400, content="Invalid tile coordinates")
+        sar_store = FsPath(settings.tile_store_path) / "sar" / str(z) / str(x) / str(y)
+        try:
+            sar_store = sar_store.resolve()
+            sar_store.relative_to(FsPath(settings.tile_store_path).resolve())
+        except (ValueError, OSError):
+            return Response(status_code=400, content="Invalid tile coordinates")
+
+        tif_paths = sorted(sar_store.glob("*.tif"))
+        if not tif_paths:
+            return Response(status_code=404, content="No SAR data for this tile")
+
+        import rasterio
+        arrays: list[np.ndarray] = []
+        for p in tif_paths[:8]:
+            with rasterio.open(str(p)) as src:
+                arr = src.read(1).astype(np.float32)
+                arrays.append(arr)
+
+        # Mean across passes, log-scale normalisation
+        stacked = np.mean(np.stack(arrays, axis=0), axis=0)
+        log_arr = np.log1p(np.maximum(stacked, 0))
+        lo, hi = np.percentile(log_arr, 2), np.percentile(log_arr, 98)
+        if hi > lo:
+            grey = np.clip((log_arr - lo) / (hi - lo) * 255, 0, 255).astype(np.uint8)
+        else:
+            grey = np.zeros_like(log_arr, dtype=np.uint8)
+
+        img = PILImage.fromarray(grey, mode="L")
+        buf = _io.BytesIO()
+        fmt = "WEBP" if "image/webp" in accept else "PNG"
+        img.save(buf, format=fmt, quality=85 if fmt == "WEBP" else None,
+                 optimize=True if fmt == "PNG" else False)
+        mime = "image/webp" if fmt == "WEBP" else "image/png"
+        return Response(content=buf.getvalue(), media_type=mime)
+
+    if settings.copernicus_client_id:
+        # Proxy from Copernicus Sentinel Hub WMS
+        # Tile coordinates to bbox (EPSG:3857)
+        import math
+        n = 2 ** z
+        def tile_to_web_mercator(tx: int, ty: int, tz: int):
+            n_t = 2 ** tz
+            lon_left  = tx / n_t * 360.0 - 180.0
+            lon_right = (tx + 1) / n_t * 360.0 - 180.0
+            lat_top    = math.degrees(math.atan(math.sinh(math.pi * (1 - 2 * ty / n_t))))
+            lat_bottom = math.degrees(math.atan(math.sinh(math.pi * (1 - 2 * (ty + 1) / n_t))))
+            def lon2m(lon): return lon * 20037508.342789244 / 180
+            def lat2m(lat): return math.log(math.tan((90 + lat) * math.pi / 360)) / (math.pi / 180) * 20037508.342789244 / 180
+            return lon2m(lon_left), lat2m(lat_bottom), lon2m(lon_right), lat2m(lat_top)
+
+        x0, y0, x1, y1 = tile_to_web_mercator(x, y, z)
+        bbox = f"{x0},{y0},{x1},{y1}"
+        sh_url = (
+            "https://services.sentinel-hub.com/ogc/wms/"
+            f"{settings.copernicus_client_id}"
+            f"?SERVICE=WMS&VERSION=1.3.0&REQUEST=GetMap"
+            f"&LAYERS=S1_SAR_IW_VV&STYLES=&CRS=EPSG:3857"
+            f"&BBOX={bbox}&WIDTH=256&HEIGHT=256&FORMAT=image/png"
+        )
+        async with httpx.AsyncClient(timeout=15.0) as client:
+            resp = await client.get(sh_url)
+        if resp.status_code != 200:
+            return Response(status_code=resp.status_code)
+        return Response(content=resp.content, media_type="image/png")
+
+    return Response(
+        status_code=503,
+        content="SAR data unavailable. Set SAR_FEATURE_ENABLED=true or COPERNICUS_CLIENT_ID.",
+    )
 
 
 # ---------------------------------------------------------------------------
