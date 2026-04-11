@@ -593,8 +593,11 @@ export function EarthWebMap() {
         {/* High-res overlay: Sentinel-2 cloud-free composite.
             When the tile server is available, use the proxied Sentinel-2 tiles.
             On static/GitHub Pages deployments, fall back to EOX Sentinel-2
-            Cloudless 2020 (free, no auth required, global coverage up to z=14;
-            MapLibre overzooms z=14 tiles at higher map zooms).
+            Cloudless 2020 (free, no auth required, global coverage up to z=14).
+            In fallback mode the layer maxzoom is capped at 14 so MapLibre stops
+            rendering this layer above z=14 and the ESRI World Imagery layer
+            underneath (real tiles up to z=17) shows through — preventing the
+            severe blurriness caused by overzooming a z=14 tile to fill z=16+.
             tileSize is kept at 256 (both sources' native output size).
             minzoom=10 matches the server's minimum zoom so MapLibre never
             fires tile requests below z=10 (which always 404 on our backend). */}
@@ -607,7 +610,7 @@ export function EarthWebMap() {
             minzoom={10}
             maxzoom={TILE_SERVER_AVAILABLE ? 25 : 14}
           >
-            <Layer {...sentinelLayer} />
+            <Layer {...sentinelLayer} maxzoom={TILE_SERVER_AVAILABLE ? undefined : 14} />
           </Source>
         )}
 
