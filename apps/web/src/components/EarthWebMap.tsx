@@ -427,11 +427,6 @@ export function EarthWebMap() {
     }, DEBOUNCE_MS);
   }, [prefetch]);
 
-  /**
-   * handleIdle — fired by MapLibre once all pending tiles have been painted.
-   */
-  const handleIdle = useCallback(() => {}, []);
-
   const handleMouseMove = useCallback(
     (evt: MapMouseEvent) => {
       if (!evt.lngLat) return;
@@ -523,7 +518,6 @@ export function EarthWebMap() {
         mapStyle={MINIMAL_DARK_STYLE}
         onMove={handleMove}
         onMouseMove={handleMouseMove}
-        onIdle={handleIdle}
         maxZoom={24}
         /**
          * pixelRatio — explicitly set to the screen's device pixel ratio so
