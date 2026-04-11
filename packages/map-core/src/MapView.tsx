@@ -23,6 +23,7 @@ import React, { useCallback, useRef } from 'react';
 import { StyleSheet } from 'react-native';
 import { TileCache } from '@the-real-earth/tile-cache';
 import { useViewportObserver } from './useViewportObserver';
+import { type BaseLayerId } from './layers';
 
 // Conditional import — will be undefined on Web (react-native-web)
 let MapboxGL: typeof import('@rnmapbox/maps') | undefined;
@@ -47,6 +48,19 @@ export interface MapViewProps {
   initialZoom?: number;
   /** Enable the CesiumJS 3D Globe mode (WebView) */
   globeMode?: boolean;
+  /**
+   * Active base layer to display.
+   *  'rgb'  → Sentinel-2 cloud-free composite (default)
+   *  'ndvi' → Vegetation health (NIR/Red ratio, colourised)
+   *  'sar'  → Cloud-piercing SAR backscatter (grayscale)
+   */
+  activeLayer?: BaseLayerId;
+  /**
+   * Optional historical year filter passed as a query parameter to the
+   * Sentinel tile endpoint (e.g. 2024 for the Time-Machine Swipe Compare).
+   * When undefined the latest composite is served.
+   */
+  year?: number;
 }
 
 // ---------------------------------------------------------------------------
@@ -58,12 +72,32 @@ export function EarthMapView({
   tileServerUrl,
   initialCenter = [0, 20],
   initialZoom = 2,
+  activeLayer = 'rgb',
+  year,
 }: MapViewProps): React.ReactElement | null {
   const cacheRef = useRef<TileCache | null>(null);
 
-  if (!cacheRef.current) {
+  // Re-create the cache when the active layer changes so prefetch targets the
+  // correct tile URL template.
+  const cacheLayerRef = useRef<string | null>(null);
+  const cacheLayerKey = `${activeLayer}:${year ?? ''}`;
+
+  if (!cacheRef.current || cacheLayerRef.current !== cacheLayerKey) {
+    cacheLayerRef.current = cacheLayerKey;
+    const yearParam = year ? `?year=${year}` : '';
+    let urlTemplate: string;
+    switch (activeLayer) {
+      case 'ndvi':
+        urlTemplate = `${tileServerUrl}/tiles/ndvi/{z}/{x}/{y}`;
+        break;
+      case 'sar':
+        urlTemplate = `${tileServerUrl}/tiles/sar/{z}/{x}/{y}`;
+        break;
+      default:
+        urlTemplate = `${tileServerUrl}/tiles/sentinel/{z}/{x}/{y}${yearParam}`;
+    }
     cacheRef.current = new TileCache({
-      tileUrlTemplate: `${tileServerUrl}/tiles/sentinel/{z}/{x}/{y}`,
+      tileUrlTemplate: urlTemplate,
       maxBytes: 500 * 1024 * 1024,
       ttlMs: 30 * 24 * 60 * 60 * 1000,
     });
@@ -86,8 +120,28 @@ export function EarthMapView({
   MapboxGL.setAccessToken(accessToken);
 
   const gibsUrl = `${tileServerUrl}/tiles/gibs/{z}/{x}/{y}.jpg`;
-  const sentinelUrl = `${tileServerUrl}/tiles/sentinel/{z}/{x}/{y}`;
   const esriUrl = 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}';
+
+  // Derive the overlay tile URL from the active layer and optional year filter.
+  function buildOverlayUrl(): string {
+    const yearParam = year ? `?year=${year}` : '';
+    switch (activeLayer) {
+      case 'ndvi':
+        return `${tileServerUrl}/tiles/ndvi/{z}/{x}/{y}`;
+      case 'sar':
+        return `${tileServerUrl}/tiles/sar/{z}/{x}/{y}`;
+      case 'rgb':
+      default:
+        return `${tileServerUrl}/tiles/sentinel/{z}/{x}/{y}${yearParam}`;
+    }
+  }
+
+  const overlayUrl = buildOverlayUrl();
+
+  // @2x / tileSize: RGB layer uses 512 px tiles (tileSize=512 on RN renders
+  // them at half the CSS pixel width → pixel-perfect on Retina displays).
+  // NDVI and SAR serve 256 px tiles.
+  const overlayTileSize: 256 | 512 = activeLayer === 'rgb' ? 512 : 256;
 
   return (
     <MapView
@@ -140,18 +194,18 @@ export function EarthMapView({
         />
       </RasterSource>
 
-      {/* High-res overlay: Sentinel-2 (cloud-free composite) */}
+      {/* High-res overlay: active base layer (RGB / NDVI / SAR) */}
       <RasterSource
-        id="sentinel-source"
-        tileUrlTemplates={[sentinelUrl]}
-        tileSize={256}
-        minZoomLevel={10}
+        id="overlay-source"
+        tileUrlTemplates={[overlayUrl]}
+        tileSize={overlayTileSize}
+        minZoomLevel={activeLayer === 'sar' ? 6 : 10}
         maxZoomLevel={maxZoom}
       >
         <RasterLayer
-          id="sentinel-layer"
-          sourceID="sentinel-source"
-          minZoomLevel={10}
+          id="overlay-layer"
+          sourceID="overlay-source"
+          minZoomLevel={activeLayer === 'sar' ? 6 : 10}
           style={{ rasterOpacity: 1, rasterResampling: 'nearest' }}
         />
       </RasterSource>
