@@ -71,6 +71,13 @@ const sentinelTileUrl = `${TILE_SERVER_URL}/tiles/sentinel/{z}/{x}/{y}`;
 const ndviTileUrl = `${TILE_SERVER_URL}/tiles/ndvi/{z}/{x}/{y}`;
 const sarTileUrl = `${TILE_SERVER_URL}/tiles/sar/{z}/{x}/{y}`;
 
+// EOX Sentinel-2 Cloudless 2020 — free, no auth required, global coverage up to z=14.
+// Used as the Sentinel-2 RGB layer fallback on static/GitHub Pages deployments where the
+// tile server is not running.  The {z}/{y}/{x} path order matches the WMTS standard
+// used by tiles.maps.eox.at.
+const EOX_SENTINEL_URL =
+  'https://tiles.maps.eox.at/wmts/1.0.0/s2cloudless-2020_3857/default/g/{z}/{y}/{x}.jpg';
+
 // Free ESRI World Imagery tiles – up to zoom 19, no auth required.
 // Used as a high-resolution gap-fill at z ≥ 9 to cover areas (e.g. Antarctica)
 // where Sentinel-2 tiles are unavailable, and as the sole high-res source on
@@ -134,7 +141,6 @@ const sentinelLayer: RasterLayerSpecification = {
   id: 'sentinel-layer',
   type: 'raster',
   source: 'sentinel',
-  minzoom: 10,
   paint: { 'raster-opacity': 1, 'raster-resampling': 'nearest', 'raster-fade-duration': 300 },
 };
 
@@ -281,13 +287,6 @@ export function EarthWebMap() {
   );
 
   /**
-   * tilesLoading — true while the map is moving/zooming and new tiles are
-   * in-flight; false once MapLibre fires the `idle` event (all visible tiles
-   * have been painted). Used to drive the CSS blur-up transition.
-   */
-  const [tilesLoading, setTilesLoading] = useState(false);
-
-  /**
    * dpr — device pixel ratio, read client-side to avoid SSR mismatches.
    * Passed as `pixelRatio` to the MapLibre Map so that:
    *  1. The WebGL canvas is sized at the full physical resolution of the screen.
@@ -406,9 +405,6 @@ export function EarthWebMap() {
     setCursorLon(longitude);
     setZoom(z);
 
-    // Mark tiles as loading so the blur-up CSS class is applied immediately.
-    setTilesLoading(true);
-
     if (debounceRef.current) clearTimeout(debounceRef.current);
     debounceRef.current = setTimeout(() => {
       // Pre-fetch surrounding tiles once the viewport settles.
@@ -430,15 +426,6 @@ export function EarthWebMap() {
       }
     }, DEBOUNCE_MS);
   }, [prefetch]);
-
-  /**
-   * handleIdle — fired by MapLibre once all pending tiles have been painted.
-   * Clears the tilesLoading flag so the CSS blur-up transition plays forward
-   * (blurry → sharp) rather than staying blurred indefinitely.
-   */
-  const handleIdle = useCallback(() => {
-    setTilesLoading(false);
-  }, []);
 
   const handleMouseMove = useCallback(
     (evt: MapMouseEvent) => {
@@ -522,7 +509,6 @@ export function EarthWebMap() {
 
   return (
     <div
-      className={`map-blur-wrapper${tilesLoading ? ' tiles-loading' : ''}`}
       style={{ position: 'relative', width: '100vw', height: '100vh' }}
     >
       <Map
@@ -532,7 +518,6 @@ export function EarthWebMap() {
         mapStyle={MINIMAL_DARK_STYLE}
         onMove={handleMove}
         onMouseMove={handleMouseMove}
-        onIdle={handleIdle}
         maxZoom={24}
         /**
          * pixelRatio — explicitly set to the screen's device pixel ratio so
@@ -563,21 +548,22 @@ export function EarthWebMap() {
           <Layer {...gibsLayer} />
         </Source>
 
-        {/* High-res gap-fill: ESRI World Imagery (z ≥ 8).
+        {/* High-res gap-fill: ESRI World Imagery (z ≥ 2).
             Always active so that areas without Sentinel-2 coverage (e.g.
             Antarctica) are rendered sharply instead of being upscaled from
             the z=8 GIBS Blue Marble. Falls back gracefully below Sentinel-2
             where the tile server is available.
-            Source maxzoom is set to 19: ESRI World Imagery has near-global
-            high-resolution coverage at that level, so actual tiles are fetched
-            at high zoom levels instead of overzooming lower-zoom tiles which
-            would appear blurry. */}
+            Source maxzoom is capped at 17: ESRI World Imagery has near-global
+            reliable coverage at z=17. Setting maxzoom higher causes 404s for
+            remote/low-density areas at z=18–19 which trigger the
+            "Map data not yet available" placeholder; at z=17 MapLibre
+            overzooms the tile instead, keeping the map visible everywhere. */}
         <Source
           id="esri"
           type="raster"
           tiles={[ESRI_WORLD_IMAGERY_URL]}
           tileSize={256}
-          maxzoom={19}
+          maxzoom={17}
         >
           <Layer {...esriLayer} />
         </Source>
@@ -598,18 +584,18 @@ export function EarthWebMap() {
         )}
 
         {/* High-res overlay: Sentinel-2 cloud-free composite.
-            tileSize is kept at 256 (our server's native output size).
-            When the backend gains @2x support, update the tile URL to
-            sentinelTileUrl + '@2x' and keep tileSize={256} — MapLibre will
-            render the 512 px tile into 256 CSS px (1:1 on Retina). */}
-        {layers.sentinel && TILE_SERVER_AVAILABLE && (
+            When the tile server is available, use the proxied Sentinel-2 tiles.
+            On static/GitHub Pages deployments, fall back to EOX Sentinel-2
+            Cloudless 2020 (free, no auth required, global coverage up to z=14;
+            MapLibre overzooms z=14 tiles at higher map zooms).
+            tileSize is kept at 256 (both sources' native output size). */}
+        {layers.sentinel && (
           <Source
             id="sentinel"
             type="raster"
-            tiles={[sentinelTileUrl]}
+            tiles={[TILE_SERVER_AVAILABLE ? sentinelTileUrl : EOX_SENTINEL_URL]}
             tileSize={256}
-            minzoom={10}
-            maxzoom={25}
+            maxzoom={TILE_SERVER_AVAILABLE ? 25 : 14}
           >
             <Layer {...sentinelLayer} />
           </Source>
