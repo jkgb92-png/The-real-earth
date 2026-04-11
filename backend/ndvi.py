@@ -161,6 +161,13 @@ async def get_ndvi_tile(
     if z < 10:
         return Response(status_code=404, content="NDVI tiles only available at z>=10")
 
+    # Explicit integer bounds check on tile coordinates before any path operation.
+    # FastAPI already enforces ge=0 / le=25 on z, but we re-validate here so
+    # CodeQL can track the sanitisation and x/y are bounded by the tile grid.
+    max_coord = 2 ** z - 1
+    if x < 0 or x > max_coord or y < 0 or y > max_coord:
+        return Response(status_code=400, content="Invalid tile coordinates")
+
     tile_dir = TILE_STORE / str(z) / str(x) / str(y)
     # Path traversal guard -- ensure tile_dir stays inside TILE_STORE
     try:
@@ -176,8 +183,8 @@ async def get_ndvi_tile(
 
     try:
         ndvi = compute_ndvi([str(p) for p in tile_paths])
-    except ValueError as exc:
-        return Response(status_code=404, content=str(exc))
+    except ValueError:
+        return Response(status_code=404, content="No valid tile data found")
 
     if "image/webp" in accept:
         return Response(content=ndvi_to_webp(ndvi), media_type="image/webp")

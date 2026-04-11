@@ -63,9 +63,12 @@ export class WorkerTileCache {
       // Next.js / webpack will bundle the worker file automatically when using
       // the `new Worker(new URL(...))` syntax.
       this.worker = new Worker(new URL('./tile.worker.ts', import.meta.url));
-    } catch {
-      // Worker creation can fail in environments that block Web Workers
-      // (e.g. certain Content-Security-Policy configurations).
+    } catch (err) {
+      // Worker creation can fail under certain Content-Security-Policy
+      // configurations or in restricted runtime environments.
+      if (process.env.NODE_ENV === 'development') {
+        console.warn('[WorkerTileCache] Failed to create tile worker:', err);
+      }
       this.worker = null;
     }
   }

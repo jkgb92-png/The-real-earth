@@ -182,7 +182,10 @@ async def sar_tile(
 
     if settings.sar_feature_enabled:
         # Local Sentinel-1 backscatter GeoTIFFs
-        from .config import Settings as _Settings
+        # Explicit integer bounds check before any path operation
+        max_coord = 2 ** z - 1
+        if x < 0 or x > max_coord or y < 0 or y > max_coord:
+            return Response(status_code=400, content="Invalid tile coordinates")
         sar_store = FsPath(settings.tile_store_path) / "sar" / str(z) / str(x) / str(y)
         try:
             sar_store = sar_store.resolve()

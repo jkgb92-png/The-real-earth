@@ -182,6 +182,13 @@ async def get_composite_tile(
     Serve WebP when the client sends ``Accept: image/webp`` for ~35% smaller
     payloads on supported browsers and the Mapbox SDK.
     """
+    # Explicit integer bounds check on tile coordinates before any path operation.
+    # FastAPI already enforces ge/le constraints on z, x, y but we re-validate
+    # here so static analysis tools can track the sanitisation.
+    max_coord = 2 ** z - 1
+    if x < 0 or x > max_coord or y < 0 or y > max_coord:
+        return Response(status_code=400, content="Invalid tile coordinates")
+
     tile_dir = TILE_STORE / str(z) / str(x) / str(y)
     # Resolve and ensure the path stays inside TILE_STORE (prevents path traversal)
     try:
