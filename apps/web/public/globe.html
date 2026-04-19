@@ -394,6 +394,49 @@
         }, { passive: true });
       }
 
+      // ── Web Audio — data-burst chirp ────────────────────────────────────────
+      // Played on the main thread (Web Audio is not available in workers).
+      // Uses a short oscillator burst filtered through a high-pass to give the
+      // "data packet zip" sound without any external audio assets.
+      let audioCtx = null;
+      function playDataBurstChirp() {
+        try {
+          if (!audioCtx) {
+            audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+          }
+          // Resume context if suspended by autoplay policy.
+          if (audioCtx.state === 'suspended') audioCtx.resume();
+
+          const now = audioCtx.currentTime;
+
+          // Oscillator: frequency sweeps 2 kHz → 4 kHz in 80 ms (upward chirp).
+          const osc = audioCtx.createOscillator();
+          osc.type = 'sine';
+          osc.frequency.setValueAtTime(2000, now);
+          osc.frequency.exponentialRampToValueAtTime(4000, now + 0.08);
+
+          // High-pass filter at 1.5 kHz removes low rumble, keeps it crisp.
+          const hpf = audioCtx.createBiquadFilter();
+          hpf.type = 'highpass';
+          hpf.frequency.value = 1500;
+          hpf.Q.value = 0.7;
+
+          // Short amplitude envelope: attack 5 ms, decay 75 ms → total ≈ 80 ms.
+          const gain = audioCtx.createGain();
+          gain.gain.setValueAtTime(0, now);
+          gain.gain.linearRampToValueAtTime(0.18, now + 0.005);
+          gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.08);
+
+          osc.connect(hpf);
+          hpf.connect(gain);
+          gain.connect(audioCtx.destination);
+
+          osc.start(now);
+          osc.stop(now + 0.08);
+          osc.onended = () => { osc.disconnect(); hpf.disconnect(); gain.disconnect(); };
+        } catch (_) { /* silently ignore if Web Audio not available */ }
+      }
+
       // ── Messages from worker ─────────────────────────────────────────────
       function handleWorkerMessage(e) {
         const msg = e.data;
@@ -409,6 +452,12 @@
         if (msg.type === 'cameraCoords') {
           window.parent.postMessage({ type: 'specOpsWorker', inner: msg }, '*');
         }
+
+        // Play a data-burst chirp whenever a new burst packet fires.
+        if (msg.type === 'dataBurst') {
+          playDataBurstChirp();
+        }
+
         // heroProximity is handled internally by the worker (cross-fade).
       }
 

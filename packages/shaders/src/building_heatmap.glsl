@@ -15,6 +15,13 @@
  *   0.66  — amber      (#ffc000)
  *   1.00  — hot red    (#ff2200)
  *
+ * Z-fighting mitigation
+ * ─────────────────────
+ * A sub-pixel dither offset (±0.001 of normalised radius) is applied to
+ * `worldDist` before the ring comparison.  This breaks up the co-planar
+ * bands that form where building wall geometry meets the ground plane,
+ * causing buildings to resolve visibly ahead of the floor.
+ *
  * Uniforms
  * ─────────
  *  scannerRadius   — normalised ring radius (0 → 1), matches scannerPass
@@ -30,6 +37,13 @@ uniform float scannerRadius;
 uniform float u_scannerActive;
 varying vec3  vWorldPos;
 varying float vOccupancy;
+
+/* Low-quality hash used for sub-pixel dither — breaks up z-fighting bands. */
+float dither(vec2 p) {
+    p  = fract(p * vec2(234.34, 435.345));
+    p += dot(p, p + 34.23);
+    return fract(p.x * p.y);
+}
 
 vec3 heatColor(float t) {
     vec3 blue  = vec3(0.0,  0.33, 1.0);
@@ -51,9 +65,11 @@ void main() {
         return;
     }
 
-    /* Approximate screen-space ring using world XZ distance from scene centre.
-       500 m is chosen to match the ~500 m radius of the placeholder city block. */
-    float worldDist = length(vWorldPos.xz) / 500.0;
+    /* Compute normalised world-XZ distance from scene centre.
+       A sub-pixel dither offset (±0.001) breaks up z-fighting where building
+       walls meet the ground plane — buildings pop ahead of the floor. */
+    float jitter    = (dither(vWorldPos.xz) - 0.5) * 0.001;
+    float worldDist = length(vWorldPos.xz) / 500.0 + jitter;
     float ring      = smoothstep(0.08, 0.0, abs(worldDist - scannerRadius));
 
     vec3  heat  = heatColor(vOccupancy);

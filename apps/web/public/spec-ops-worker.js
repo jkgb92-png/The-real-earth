@@ -51,6 +51,7 @@
  *  { type: 'heroProximity', near, distance }
  *  { type: 'scannerComplete' }
  *  { type: 'cameraCoords',  lat, lon }       — throttled to 6 Hz
+ *  { type: 'dataBurst',     segment }        — fired every 3.5 s on burst cycle
  */
 
 'use strict';
@@ -245,6 +246,13 @@ uniform float u_scannerActive;
 varying vec3  vWorldPos;
 varying float vOccupancy;
 
+/* Low-quality hash used for sub-pixel dither — breaks up z-fighting bands. */
+float dither(vec2 p) {
+    p = fract(p * vec2(234.34, 435.345));
+    p += dot(p, p + 34.23);
+    return fract(p.x * p.y);
+}
+
 vec3 heatColor(float t) {
     /* 0 = cool blue, 0.33 = cyan, 0.66 = amber, 1 = hot red */
     vec3 blue  = vec3(0.0, 0.33, 1.0);
@@ -265,10 +273,12 @@ void main() {
         return;
     }
 
-    /* Screen-space radial distance from centre. */
-    /* We approximate screen-space by using world XZ for the ring position so
-       the heat pulse tracks the 3-D scanner ring. */
-    float worldDist = length(vWorldPos.xz) / 500.0;   /* normalise to ~500 m radius */
+    /* Compute normalised world-XZ distance from scene centre.
+       A sub-pixel dither offset (±0.001 of normalised radius) breaks up the
+       co-planar z-fighting bands that appear where building walls meet the
+       ground plane — buildings pop visibly ahead of the floor. */
+    float jitter    = (dither(vWorldPos.xz) - 0.5) * 0.001;
+    float worldDist = length(vWorldPos.xz) / 500.0 + jitter;
     float ring      = smoothstep(0.08, 0.0, abs(worldDist - scannerRadius));
 
     /* Blend to heat colour under the ring, weight by occupancy. */
@@ -464,6 +474,9 @@ class MockDataStream {
       this._burstSegment = (this._burstSegment + 1) % this._count;
       this._burstStart   = performance.now();
       this._segments[this._burstSegment].burstTime = 0; // will be updated in getBurstTime()
+
+      // Notify main thread so the audio layer can play the chirp.
+      self.postMessage({ type: 'dataBurst', segment: this._burstSegment });
     }, 3500);
   }
 
@@ -933,21 +946,30 @@ function renderFrame(now) {
     voxelUniforms.scannerRadius.value = currentScannerR;
   }
 
-  // ── Glitch pass — natural decay ────────────────────────────────────────────
+  // ── Glitch pass — natural decay + tile-loading floor ─────────────────────────
   if (glitchUniforms) {
     glitchUniforms.u_time.value = elapsed;
-    // Decay intensity toward 0 at 6×/s so the 200 ms burst fades naturally.
-    if (glitchUniforms.u_intensity.value > 0.01) {
+
+    // While Google 3D Tiles are still streaming in, hold a subtle grain floor
+    // (0.2) so the visual hitch of material swaps is masked rather than exposed
+    // by an abrupt glitch-off.  Once tiles are stable the decay resumes.
+    const tilesLoading = tilesRenderer && tilesRenderer.pending > 0;
+    const intensityFloor = tilesLoading ? 0.2 : 0;
+
+    // Decay intensity toward the floor at 6×/s so the 200 ms burst fades naturally.
+    if (glitchUniforms.u_intensity.value > intensityFloor + 0.01) {
       glitchUniforms.u_intensity.value = Math.max(
-        0, glitchUniforms.u_intensity.value - dt * 6
+        intensityFloor, glitchUniforms.u_intensity.value - dt * 6
       );
     } else {
-      glitchUniforms.u_intensity.value = 0;
+      glitchUniforms.u_intensity.value = intensityFloor;
     }
   }
 
   // ── Render (skip when nothing to show) ────────────────────────────────────
+  const tilesLoading = tilesRenderer && tilesRenderer.pending > 0;
   const anyActive = subsurfaceActive || heroAssetActive || livePulseActive || scannerActive
+    || tilesLoading
     || (glitchUniforms && glitchUniforms.u_intensity.value > 0.01);
   if (anyActive) {
     composer.render();

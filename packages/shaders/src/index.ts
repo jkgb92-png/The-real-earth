@@ -265,12 +265,21 @@ void main() {
  * Fragment shader for the ghost-building heatmap.
  * When the scanner ring passes over a building it pulses from cool blue to
  * hot red depending on the pseudo-random "occupancy" of that building.
+ * A sub-pixel dither offset on worldDist eliminates z-fighting where building
+ * walls meet the ground plane.
  */
 export const buildingFragShader = /* glsl */ `
 uniform float scannerRadius;
 uniform float u_scannerActive;
 varying vec3  vWorldPos;
 varying float vOccupancy;
+
+/* Low-quality hash used for sub-pixel dither — breaks up z-fighting bands. */
+float dither(vec2 p) {
+    p  = fract(p * vec2(234.34, 435.345));
+    p += dot(p, p + 34.23);
+    return fract(p.x * p.y);
+}
 
 vec3 heatColor(float t) {
     vec3 blue  = vec3(0.0, 0.33, 1.0);
@@ -285,11 +294,13 @@ vec3 heatColor(float t) {
 void main() {
     vec3 base = vec3(0.16, 0.28, 0.47);
     if (u_scannerActive < 0.5) { gl_FragColor = vec4(base, 1.0); return; }
-    float worldDist = length(vWorldPos.xz) / 500.0;
+    /* ±0.001 dither offset on worldDist prevents co-planar z-fighting bands
+       between building walls and the ground plane. */
+    float jitter    = (dither(vWorldPos.xz) - 0.5) * 0.001;
+    float worldDist = length(vWorldPos.xz) / 500.0 + jitter;
     float ring      = smoothstep(0.08, 0.0, abs(worldDist - scannerRadius));
     vec3  heat      = heatColor(vOccupancy);
-    float blend     = ring * 0.85;
-    gl_FragColor    = vec4(mix(base, heat * 2.0, blend), 1.0);
+    gl_FragColor    = vec4(mix(base, heat * 2.0, ring * 0.85), 1.0);
 }
 `;
 
