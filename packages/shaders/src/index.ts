@@ -136,6 +136,7 @@ void main() {
 /**
  * Fragment shader for the Live-Pulse road-flow animation.
  * Core expression: fract(vUv.x - time * flowRate * 0.3)
+ * Includes uBurstTime for the neon-gold data-burst packet (emissive 5.0).
  * Matches packages/shaders/src/road_pulse.glsl.
  */
 export const roadPulseFragShader = /* glsl */ `
@@ -143,6 +144,7 @@ uniform float time;
 uniform float flowRate;
 uniform float congestion;
 uniform float scannerRadius;
+uniform float uBurstTime;
 
 varying vec2 vUv;
 
@@ -157,9 +159,22 @@ vec3 pulseColor(float c) {
 void main() {
     float p    = fract(vUv.x - time * flowRate * 0.3);
     float dash = smoothstep(0.0, 0.08, p) * smoothstep(0.55, 0.40, p);
-    if (dash < 0.01) discard;
-    vec3 col = pulseColor(congestion) * (1.0 + dash * 1.5);
-    gl_FragColor = vec4(col, dash * 0.9);
+
+    vec3  col   = pulseColor(congestion) * (1.0 + dash * 1.5);
+    float alpha = dash * 0.9;
+
+    float burstActive = step(0.0, uBurstTime) * step(uBurstTime, 1.0);
+    float bDist = vUv.x - uBurstTime;
+    float tail  = burstActive * smoothstep(-0.1, 0.0, bDist) * smoothstep(0.01, 0.0, bDist);
+    float head  = burstActive * smoothstep(0.01, 0.0, abs(bDist));
+    float burst = clamp(tail + head * 2.0, 0.0, 1.0);
+    vec3  gold  = vec3(1.0, 0.84, 0.0);
+
+    col   = mix(col, gold * 5.0, burst);
+    alpha = max(alpha, burst * 0.95);
+
+    if (alpha < 0.01) discard;
+    gl_FragColor = vec4(col, alpha);
 }
 `;
 
@@ -220,5 +235,93 @@ void main() {
     float blend    = clamp(ring * edge * 2.5, 0.0, 1.0);
 
     gl_FragColor = vec4(mix(src.rgb, solarGold, blend), src.a);
+}
+`;
+
+// ── Ghost-Building Heatmap ────────────────────────────────────────────────────
+
+/**
+ * Vertex shader for placeholder building meshes.
+ * Passes world-space XZ so the scanner ring can be applied in fragment.
+ * Encodes a per-building pseudo-random "occupancy" from the model matrix.
+ */
+export const buildingVertShader = /* glsl */ `
+uniform float scannerRadius;
+varying vec3  vWorldPos;
+varying float vOccupancy;
+float rand(float n) { return fract(sin(n * 127.1) * 43758.5453); }
+void main() {
+    vec4 wp    = modelMatrix * vec4(position, 1.0);
+    vWorldPos  = wp.xyz;
+    vOccupancy = rand(modelMatrix[3][0] * 0.01 + modelMatrix[3][2] * 0.007);
+    gl_Position = projectionMatrix * viewMatrix * wp;
+}
+`;
+
+/**
+ * Fragment shader for the ghost-building heatmap.
+ * When the scanner ring passes over a building it pulses from cool blue to
+ * hot red depending on the pseudo-random "occupancy" of that building.
+ */
+export const buildingFragShader = /* glsl */ `
+uniform float scannerRadius;
+uniform float u_scannerActive;
+varying vec3  vWorldPos;
+varying float vOccupancy;
+
+vec3 heatColor(float t) {
+    vec3 blue  = vec3(0.0, 0.33, 1.0);
+    vec3 cyan  = vec3(0.0, 0.9,  1.0);
+    vec3 amber = vec3(1.0, 0.75, 0.0);
+    vec3 red   = vec3(1.0, 0.13, 0.0);
+    if (t < 0.33) return mix(blue,  cyan,  t / 0.33);
+    if (t < 0.66) return mix(cyan,  amber, (t - 0.33) / 0.33);
+    return             mix(amber, red,   (t - 0.66) / 0.34);
+}
+
+void main() {
+    vec3 base = vec3(0.16, 0.28, 0.47);
+    if (u_scannerActive < 0.5) { gl_FragColor = vec4(base, 1.0); return; }
+    float worldDist = length(vWorldPos.xz) / 500.0;
+    float ring      = smoothstep(0.08, 0.0, abs(worldDist - scannerRadius));
+    vec3  heat      = heatColor(vOccupancy);
+    float blend     = ring * 0.85;
+    gl_FragColor    = vec4(mix(base, heat * 2.0, blend), 1.0);
+}
+`;
+
+// ── Satellite Signal Interference (glitch pass) ───────────────────────────────
+
+/**
+ * Fragment shader for the CRT-static / horizontal-shift glitch pass.
+ * Triggered for ~200 ms whenever a Spec-Ops feature is toggled on/off.
+ * u_intensity decays from 1.0 → 0 at 6×/s in the render loop.
+ */
+export const glitchFragShader = /* glsl */ `
+uniform sampler2D tDiffuse;
+uniform float     u_intensity;
+uniform float     u_time;
+varying vec2 vUv;
+
+float hash(vec2 p) {
+    p = fract(p * vec2(234.34, 435.345));
+    p += dot(p, p + 34.23);
+    return fract(p.x * p.y);
+}
+
+void main() {
+    if (u_intensity < 0.01) { gl_FragColor = texture2D(tDiffuse, vUv); return; }
+    float band      = floor(vUv.y * 30.0) / 30.0;
+    float shift     = (hash(vec2(band, u_time * 8.0)) - 0.5) * 0.04 * u_intensity;
+    vec2  shiftedUv = vec2(fract(vUv.x + shift), vUv.y);
+    vec4  col       = texture2D(tDiffuse, shiftedUv);
+    float ca        = 0.003 * u_intensity;
+    col.r           = texture2D(tDiffuse, shiftedUv + vec2( ca, 0.0)).r;
+    col.b           = texture2D(tDiffuse, shiftedUv + vec2(-ca, 0.0)).b;
+    float scanline  = 0.85 + 0.15 * sin(vUv.y * 400.0);
+    col.rgb        *= scanline;
+    float noise     = (hash(vUv + u_time) - 0.5) * 0.12 * u_intensity;
+    col.rgb        += noise;
+    gl_FragColor    = col;
 }
 `;

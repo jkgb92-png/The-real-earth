@@ -398,9 +398,16 @@
       function handleWorkerMessage(e) {
         const msg = e.data;
         if (!msg) return;
+
         if (msg.type === 'scannerComplete') {
           // Scanner finished its 3-pass sequence — notify the React parent.
           window.parent.postMessage({ type: 'specOpsEvent', event: 'scannerComplete' }, '*');
+        }
+
+        // Relay camera coordinates to the React parent (SpecOpsToolbar).
+        // Wrapped in a 'specOpsWorker' envelope to distinguish from other messages.
+        if (msg.type === 'cameraCoords') {
+          window.parent.postMessage({ type: 'specOpsWorker', inner: msg }, '*');
         }
         // heroProximity is handled internally by the worker (cross-fade).
       }

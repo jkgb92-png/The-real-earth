@@ -17,7 +17,7 @@
  * rendering happens in the worker; this component is purely declarative UI.
  */
 
-import React, { useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 
 export type SpecOpsFeature = 'subsurface' | 'heroAsset' | 'scanner' | 'livePulse';
 
@@ -67,6 +67,45 @@ const FEATURES: FeatureMeta[] = [
   },
 ];
 
+// ── Coordinate lead-in hook ───────────────────────────────────────────────────
+/**
+ * Manages the glitch-scroll coordinate display.
+ * On each new coordinate update from the worker the digits spin briefly before
+ * settling on the real value, giving the "tactical HUD acquiring lock" feel.
+ */
+function useGlitchCoords(lat: number, lon: number) {
+  const [display, setDisplay] = useState({ lat, lon });
+  const spinRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  useEffect(() => {
+    // Cancel any in-progress spin.
+    if (spinRef.current) { clearInterval(spinRef.current); spinRef.current = null; }
+
+    let ticks = 0;
+    const TOTAL = 8; // number of random frames before settling
+    spinRef.current = setInterval(() => {
+      ticks++;
+      if (ticks >= TOTAL) {
+        clearInterval(spinRef.current!);
+        spinRef.current = null;
+        setDisplay({ lat, lon });
+      } else {
+        // Random digits in the same ±0.5° range to look plausible.
+        setDisplay({
+          lat: lat + (Math.random() - 0.5) * 0.01,
+          lon: lon + (Math.random() - 0.5) * 0.01,
+        });
+      }
+    }, 40);
+
+    return () => {
+      if (spinRef.current) clearInterval(spinRef.current);
+    };
+  }, [lat, lon]); // new spin whenever real coords change
+
+  return display;
+}
+
 interface Props {
   /** Ref to the globe.html iframe — used to postMessage into the iframe. */
   iframeRef: React.RefObject<HTMLIFrameElement | null>;
@@ -81,6 +120,25 @@ export function SpecOpsToolbar({ iframeRef, onToggle }: Props) {
     scanner:    false,
     livePulse:  false,
   });
+
+  // Raw coordinates from the worker — updated ~6 Hz via postMessage relay.
+  const [rawCoords, setRawCoords] = useState({ lat: 26.6133, lon: -81.6317 });
+  // Glitch-scroll display coordinates.
+  const glitchCoords = useGlitchCoords(rawCoords.lat, rawCoords.lon);
+  const anyActive = Object.values(state).some(Boolean);
+
+  // Listen for worker messages relayed by globe.html.
+  useEffect(() => {
+    function onMessage(e: MessageEvent) {
+      const msg = e.data;
+      if (!msg) return;
+      if (msg.type === 'specOpsWorker' && msg.inner?.type === 'cameraCoords') {
+        setRawCoords({ lat: msg.inner.lat, lon: msg.inner.lon });
+      }
+    }
+    window.addEventListener('message', onMessage);
+    return () => window.removeEventListener('message', onMessage);
+  }, []);
 
   function toggle(key: SpecOpsFeature) {
     const enabled = !state[key];
@@ -101,7 +159,10 @@ export function SpecOpsToolbar({ iframeRef, onToggle }: Props) {
     onToggle?.(key, enabled);
   }
 
-  const anyActive = Object.values(state).some(Boolean);
+  const fmtCoord = (n: number, pos: string, neg: string) => {
+    const dir = n >= 0 ? pos : neg;
+    return `${Math.abs(n).toFixed(4)}° ${dir}`;
+  };
 
   return (
     <div style={toolbarStyle}>
@@ -110,6 +171,15 @@ export function SpecOpsToolbar({ iframeRef, onToggle }: Props) {
         <span style={titleIconStyle}>⚔</span>
         <span style={titleTextStyle}>SPEC-OPS</span>
         {anyActive && <span style={liveIndicatorStyle}>LIVE</span>}
+      </div>
+
+      {/* Coordinate lead-in display */}
+      <div style={coordRowStyle}>
+        <span style={coordLabelStyle}>LAT</span>
+        <span style={coordValueStyle}>{fmtCoord(glitchCoords.lat, 'N', 'S')}</span>
+        <span style={coordSepStyle}>·</span>
+        <span style={coordLabelStyle}>LON</span>
+        <span style={coordValueStyle}>{fmtCoord(glitchCoords.lon, 'E', 'W')}</span>
       </div>
 
       {/* Feature buttons */}
@@ -185,6 +255,42 @@ const liveIndicatorStyle: React.CSSProperties = {
   borderRadius:  4,
   padding:       '1px 5px',
   animation:     'pulse 1.4s ease-in-out infinite',
+};
+
+// ── Coordinate lead-in display styles ─────────────────────────────────────────
+
+const coordRowStyle: React.CSSProperties = {
+  display:        'flex',
+  alignItems:     'center',
+  gap:            4,
+  padding:        '3px 6px',
+  background:     'rgba(0,255,180,0.06)',
+  border:         '1px solid rgba(0,255,180,0.18)',
+  borderRadius:   6,
+  marginBottom:   2,
+  fontFamily:     '"Courier New", Courier, monospace',
+};
+
+const coordLabelStyle: React.CSSProperties = {
+  fontSize:      '0.45rem',
+  fontWeight:    700,
+  letterSpacing: '0.12em',
+  color:         'rgba(0,255,180,0.5)',
+};
+
+const coordValueStyle: React.CSSProperties = {
+  fontSize:      '0.55rem',
+  fontWeight:    700,
+  letterSpacing: '0.06em',
+  color:         'rgba(0,255,180,0.9)',
+  minWidth:      '6.8ch',
+  textAlign:     'right' as const,
+};
+
+const coordSepStyle: React.CSSProperties = {
+  fontSize: '0.5rem',
+  color:    'rgba(0,255,180,0.25)',
+  padding:  '0 2px',
 };
 
 const buttonRowStyle: React.CSSProperties = {

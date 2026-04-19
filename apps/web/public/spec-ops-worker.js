@@ -50,6 +50,7 @@
  *  { type: 'ready' }
  *  { type: 'heroProximity', near, distance }
  *  { type: 'scannerComplete' }
+ *  { type: 'cameraCoords',  lat, lon }       — throttled to 6 Hz
  */
 
 'use strict';
@@ -113,7 +114,12 @@ uniform float time;
 uniform float flowRate;
 uniform float congestion;
 uniform float scannerRadius;
+/* uBurstTime: normalised position of the neon-gold data packet (0→1).
+   A value outside [0,1] means no active burst on this segment. */
+uniform float uBurstTime;
+
 varying vec2 vUv;
+
 vec3 pulseColor(float c) {
     vec3 cyan  = vec3(0.0,  0.898, 1.0);
     vec3 amber = vec3(1.0,  0.769, 0.0);
@@ -121,12 +127,33 @@ vec3 pulseColor(float c) {
     if (c < 0.5) return mix(cyan, amber, c * 2.0);
     return mix(amber, red, (c - 0.5) * 2.0);
 }
+
 void main() {
+    /* Standard travelling dash. */
     float p    = fract(vUv.x - time * flowRate * 0.3);
     float dash = smoothstep(0.0, 0.08, p) * smoothstep(0.55, 0.40, p);
-    if (dash < 0.01) discard;
-    vec3 col = pulseColor(congestion) * (1.0 + dash * 1.5);
-    gl_FragColor = vec4(col, dash * 0.9);
+
+    vec3  col   = pulseColor(congestion) * (1.0 + dash * 1.5);
+    float alpha = dash * 0.9;
+
+    /* Data-burst overlay — neon-gold packet with a 0.1-length comet tail.
+       uBurstTime < 0.0 or > 1.0 means no active burst → burst = 0. */
+    float burstActive = step(0.0, uBurstTime) * step(uBurstTime, 1.0);
+    float bDist = vUv.x - uBurstTime;             /* signed distance behind head */
+    /* Tail extends 0.1 units behind the head (bDist in [-0.1, 0]). */
+    float tail  = burstActive * smoothstep(-0.1, 0.0, bDist) * smoothstep(0.01, 0.0, bDist);
+    /* Head is a sharp bright cap. */
+    float head  = burstActive * smoothstep(0.01, 0.0, abs(bDist));
+
+    float burst = clamp(tail + head * 2.0, 0.0, 1.0);
+    vec3  gold  = vec3(1.0, 0.84, 0.0);
+
+    /* Emissive intensity of 5.0 on the burst — creates bloom appearance. */
+    col   = mix(col, gold * 5.0, burst);
+    alpha = max(alpha, burst * 0.95);
+
+    if (alpha < 0.01) discard;
+    gl_FragColor = vec4(col, alpha);
 }`;
 
 const SPLAT_VERT = /* glsl */`
@@ -190,6 +217,104 @@ void main() {
     vec3  solarGold = vec3(1.0, 0.843, 0.0);
     float blend    = clamp(ring * edge * 2.5, 0.0, 1.0);
     gl_FragColor   = vec4(mix(src.rgb, solarGold, blend), src.a);
+}`;
+
+// ── Ghost-Building heatmap ─────────────────────────────────────────────────────
+// Applied to placeholder building meshes. When the scanner ring passes over
+// a building, its occupancy value (baked as vOccupancy) drives a heat gradient
+// from cool blue (#0055ff) through cyan, through amber, to hot red (#ff2200).
+const BUILDING_VERT = /* glsl */`
+uniform float scannerRadius;
+varying vec3  vWorldPos;
+varying float vOccupancy;
+/* Pseudo-random occupancy baked per-instance via the vertex y-position seed. */
+float rand(float n) { return fract(sin(n * 127.1) * 43758.5453); }
+void main() {
+    vec4 wp    = modelMatrix * vec4(position, 1.0);
+    vWorldPos  = wp.xyz;
+    /* Use model-matrix translation as a unique seed per building. */
+    vOccupancy = rand(modelMatrix[3][0] * 0.01 + modelMatrix[3][2] * 0.007);
+    gl_Position = projectionMatrix * viewMatrix * wp;
+}`;
+
+const BUILDING_FRAG = /* glsl */`
+uniform float scannerRadius;
+uniform float u_scannerActive;
+varying vec3  vWorldPos;
+varying float vOccupancy;
+
+vec3 heatColor(float t) {
+    /* 0 = cool blue, 0.33 = cyan, 0.66 = amber, 1 = hot red */
+    vec3 blue  = vec3(0.0, 0.33, 1.0);
+    vec3 cyan  = vec3(0.0, 0.9,  1.0);
+    vec3 amber = vec3(1.0, 0.75, 0.0);
+    vec3 red   = vec3(1.0, 0.13, 0.0);
+    if (t < 0.33) return mix(blue,  cyan,  t / 0.33);
+    if (t < 0.66) return mix(cyan,  amber, (t - 0.33) / 0.33);
+    return             mix(amber, red,   (t - 0.66) / 0.34);
+}
+
+void main() {
+    /* Base building colour — steel blue. */
+    vec3 base = vec3(0.16, 0.28, 0.47);
+
+    if (u_scannerActive < 0.5) {
+        gl_FragColor = vec4(base, 1.0);
+        return;
+    }
+
+    /* Screen-space radial distance from centre. */
+    /* We approximate screen-space by using world XZ for the ring position so
+       the heat pulse tracks the 3-D scanner ring. */
+    float worldDist = length(vWorldPos.xz) / 500.0;   /* normalise to ~500 m radius */
+    float ring      = smoothstep(0.08, 0.0, abs(worldDist - scannerRadius));
+
+    /* Blend to heat colour under the ring, weight by occupancy. */
+    vec3  heat  = heatColor(vOccupancy);
+    float blend = ring * 0.85;
+    gl_FragColor = vec4(mix(base, heat * 2.0, blend), 1.0);
+}`;
+
+// ── Satellite signal-interference glitch pass ─────────────────────────────────
+// Full-screen ShaderPass: CRT horizontal-shift + noise grain.
+// Triggered for 200 ms on every specOps toggle via glitchUniforms.u_intensity.
+const GLITCH_FRAG = /* glsl */`
+uniform sampler2D tDiffuse;
+uniform float     u_intensity;  /* 0 = pass-through, 1 = full glitch */
+uniform float     u_time;
+varying vec2 vUv;
+
+/* Low-quality hash for noise. */
+float hash(vec2 p) {
+    p = fract(p * vec2(234.34, 435.345));
+    p += dot(p, p + 34.23);
+    return fract(p.x * p.y);
+}
+
+void main() {
+    if (u_intensity < 0.01) { gl_FragColor = texture2D(tDiffuse, vUv); return; }
+
+    /* Horizontal scan-line shift — quantise to coarse bands. */
+    float band      = floor(vUv.y * 30.0) / 30.0;
+    float shift     = (hash(vec2(band, u_time * 8.0)) - 0.5) * 0.04 * u_intensity;
+    vec2  shiftedUv = vec2(fract(vUv.x + shift), vUv.y);
+
+    vec4 col = texture2D(tDiffuse, shiftedUv);
+
+    /* Chromatic aberration — split R/B channels slightly. */
+    float ca = 0.003 * u_intensity;
+    col.r    = texture2D(tDiffuse, shiftedUv + vec2( ca, 0.0)).r;
+    col.b    = texture2D(tDiffuse, shiftedUv + vec2(-ca, 0.0)).b;
+
+    /* Scanline darkening. */
+    float scanline = 0.85 + 0.15 * sin(vUv.y * 400.0);
+    col.rgb *= scanline;
+
+    /* White noise grain. */
+    float noise = (hash(vUv + u_time) - 0.5) * 0.12 * u_intensity;
+    col.rgb    += noise;
+
+    gl_FragColor = col;
 }`;
 
 // ── Helper: geographic to local Three.js coordinates ─────────────────────────
@@ -295,6 +420,7 @@ class SimpleTilesRenderer {
 
 // ── Mock real-time data stream ────────────────────────────────────────────────
 // Generates sinusoidal flow data for each road segment at 10 Hz.
+// A neon-gold data burst cycles through the 12 segments every 3.5 s.
 class MockDataStream {
   constructor(count) {
     this._count    = Math.max(count, 1);
@@ -302,13 +428,20 @@ class MockDataStream {
       flowRate:   0.3 + 0.5 * Math.random(),
       congestion: Math.random(),
       phase:      Math.random() * Math.PI * 2,
+      burstTime:  -1,   // < 0 = no active burst on this segment
     }));
-    this._t  = 0;
-    this._id = null;
+    this._t            = 0;
+    this._id           = null;
+    this._burstId      = null;
+    this._burstSegment = 0;   // which segment is currently bursting (cycles 0–11)
+    this._burstStart   = -1;  // performance.now() when the burst on this segment began
+    this._BURST_DURATION_MS = 1200; // how long a single segment burst lasts
   }
 
   start() {
     if (this._id) return;
+
+    // Flow-rate / congestion update at 10 Hz.
     this._id = setInterval(() => {
       this._t += 0.1;
       this._segments.forEach((s) => {
@@ -316,14 +449,40 @@ class MockDataStream {
         s.congestion = 0.5 + 0.48 *         Math.sin(this._t * 0.3  + s.phase * 1.7);
       });
     }, 100);
+
+    // Data-burst scheduler — fires a new burst every 3.5 s, cycling through segments.
+    this._burstId = setInterval(() => {
+      // Mark previous segment burst as done.
+      if (this._burstSegment >= 0 && this._burstSegment < this._count) {
+        this._segments[this._burstSegment % this._count].burstTime = -1;
+      }
+      this._burstSegment = (this._burstSegment + 1) % this._count;
+      this._burstStart   = performance.now();
+      this._segments[this._burstSegment].burstTime = 0; // will be updated in getBurstTime()
+    }, 3500);
   }
 
   stop() {
-    if (this._id) { clearInterval(this._id); this._id = null; }
+    if (this._id)      { clearInterval(this._id);      this._id      = null; }
+    if (this._burstId) { clearInterval(this._burstId); this._burstId = null; }
+    // Clear all burst states.
+    this._segments.forEach((s) => { s.burstTime = -1; });
   }
 
   getData(i) {
     return this._segments[i % this._count];
+  }
+
+  /** Returns normalised burst position (0→1) for segment i, or -1 if no burst. */
+  getBurstTime(i) {
+    const idx = i % this._count;
+    if (idx !== this._burstSegment || this._burstStart < 0) return -1;
+    const elapsed = performance.now() - this._burstStart;
+    if (elapsed > this._BURST_DURATION_MS) {
+      this._segments[idx].burstTime = -1;
+      return -1;
+    }
+    return elapsed / this._BURST_DURATION_MS; // 0 → 1 over burst duration
   }
 }
 
@@ -362,7 +521,7 @@ const orbit = {
 };
 
 // ── Runtime state ─────────────────────────────────────────────────────────────
-let renderer, scene, camera, composer, scannerPass, clock;
+let renderer, scene, camera, composer, scannerPass, glitchPass, clock;
 let canvasWidth  = 800;
 let canvasHeight = 600;
 
@@ -380,8 +539,10 @@ let roadGroup      = null;   // road Line objects
 let tilesRenderer  = null;   // SimpleTilesRenderer (when API key provided)
 
 // Shared uniforms referenced across feature implementations
-let voxelUniforms  = null;
-let roadSegments   = [];     // [{ mesh, uniforms }]
+let voxelUniforms     = null;
+let buildingUniforms  = null;  // scannerRadius + u_scannerActive for ghost-heatmap
+let roadSegments      = [];    // [{ mesh, uniforms }]
+let glitchUniforms    = null;  // u_intensity (0→1), u_time
 
 // Clipping plane (subsurface X-Ray)
 let clipPlane         = null;
@@ -468,16 +629,27 @@ function initScene(canvas, width, height, apiKey) {
 
 // ── Placeholder buildings ─────────────────────────────────────────────────────
 function createPlaceholderBuildings() {
-  const group  = new THREE.Group();
-  const geo    = new THREE.BoxGeometry(1, 1, 1);
-  const mat    = new THREE.MeshStandardMaterial({ color: 0x2a4a7a, roughness: 0.55, metalness: 0.3 });
+  const group = new THREE.Group();
 
-  // Ground plane
+  // Ground plane — stays as standard MeshStandardMaterial.
   const groundGeo = new THREE.PlaneGeometry(6000, 6000);
   const groundMat = new THREE.MeshStandardMaterial({ color: 0x1a2a1a, roughness: 0.95 });
   const ground    = new THREE.Mesh(groundGeo, groundMat);
   ground.rotation.x = -Math.PI / 2;
   group.add(ground);
+
+  // Shared building uniforms — drive the ghost-heatmap effect.
+  buildingUniforms = {
+    scannerRadius:    { value: 0 },
+    u_scannerActive:  { value: 0 },
+  };
+
+  const mat = new THREE.ShaderMaterial({
+    uniforms:       buildingUniforms,
+    vertexShader:   BUILDING_VERT,
+    fragmentShader: BUILDING_FRAG,
+    side:           THREE.FrontSide,
+  });
 
   // City-block grid of randomised buildings (~5 × 5 km area).
   for (let ix = -5; ix <= 5; ix++) {
@@ -613,6 +785,7 @@ async function loadRoads() {
         flowRate:      { value: 0.5 },
         congestion:    { value: 0.3 },
         scannerRadius: { value: 0 },
+        uBurstTime:    { value: -1 },  // -1 = no active burst
       };
 
       const mat = new THREE.ShaderMaterial({
@@ -665,8 +838,21 @@ function initComposer() {
     vertexShader:   SCANNER_VERT,
     fragmentShader: SCANNER_FRAG,
   });
-  scannerPass.renderToScreen = true;
   composer.addPass(scannerPass);
+
+  // Glitch pass — always in the chain but intensity = 0 when idle.
+  glitchUniforms = {
+    tDiffuse:    { value: null },
+    u_intensity: { value: 0 },
+    u_time:      { value: 0 },
+  };
+  glitchPass = new THREE.ShaderPass({
+    uniforms:       glitchUniforms,
+    vertexShader:   SCANNER_VERT,   // same full-screen-quad vert shader
+    fragmentShader: GLITCH_FRAG,
+  });
+  glitchPass.renderToScreen = true;
+  composer.addPass(glitchPass);
 }
 
 // ── Render loop ───────────────────────────────────────────────────────────────
@@ -681,9 +867,25 @@ function renderFrame(now) {
   // Camera
   orbit.updateCamera(camera);
 
+  // ── Post camera coordinates to main thread (for coordinate lead-in UI) ──────
+  // Convert orbit angles to approximate lat/lon relative to hero coord.
+  const camLat = HERO_LAT - (camera.position.z / DEG_TO_M_LAT);
+  const camLon = HERO_LON + (camera.position.x / DEG_TO_M_LON);
+  // Throttle to once per 5 frames to keep postMessage overhead minimal.
+  if (Math.floor(elapsed * TARGET_FPS) % 5 === 0) {
+    self.postMessage({ type: 'cameraCoords', lat: camLat, lon: camLon });
+  }
+
   // ── Voxel animation ────────────────────────────────────────────────────────
   if (voxelUniforms) {
     voxelUniforms.time.value = elapsed;
+  }
+
+  // ── Ghost-building heatmap — propagate scanner radius ─────────────────────
+  const currentScannerR = scannerPass ? scannerPass.uniforms.scannerRadius.value : 0;
+  if (buildingUniforms) {
+    buildingUniforms.scannerRadius.value   = currentScannerR;
+    buildingUniforms.u_scannerActive.value = scannerActive ? 1 : 0;
   }
 
   // ── Hero splat proximity & fade ────────────────────────────────────────────
@@ -707,14 +909,15 @@ function renderFrame(now) {
     }
   }
 
-  // ── Road pulse updates ─────────────────────────────────────────────────────
-  const currentScannerR = scannerPass ? scannerPass.uniforms.scannerRadius.value : 0;
+  // ── Road pulse updates (including uBurstTime) ──────────────────────────────
   roadSegments.forEach((seg, i) => {
     const data = mockStream ? mockStream.getData(i) : { flowRate: 0.5, congestion: 0.3 };
     seg.uniforms.time.value          = elapsed;
     seg.uniforms.flowRate.value      = data.flowRate;
     seg.uniforms.congestion.value    = data.congestion;
     seg.uniforms.scannerRadius.value = currentScannerR;
+    // Update burst position — fluid at 30 fps because it reads performance.now() directly.
+    seg.uniforms.uBurstTime.value    = mockStream ? mockStream.getBurstTime(i) : -1;
   });
 
   // Propagate scanner radius to voxel material as well.
@@ -722,8 +925,22 @@ function renderFrame(now) {
     voxelUniforms.scannerRadius.value = currentScannerR;
   }
 
+  // ── Glitch pass — natural decay ────────────────────────────────────────────
+  if (glitchUniforms) {
+    glitchUniforms.u_time.value = elapsed;
+    // Decay intensity toward 0 at 6×/s so the 200 ms burst fades naturally.
+    if (glitchUniforms.u_intensity.value > 0.01) {
+      glitchUniforms.u_intensity.value = Math.max(
+        0, glitchUniforms.u_intensity.value - dt * 6
+      );
+    } else {
+      glitchUniforms.u_intensity.value = 0;
+    }
+  }
+
   // ── Render (skip when nothing to show) ────────────────────────────────────
-  const anyActive = subsurfaceActive || heroAssetActive || livePulseActive || scannerActive;
+  const anyActive = subsurfaceActive || heroAssetActive || livePulseActive || scannerActive
+    || (glitchUniforms && glitchUniforms.u_intensity.value > 0.01);
   if (anyActive) {
     composer.render();
   }
@@ -774,6 +991,11 @@ function stopScanner() {
 
 // ── SpecOps command dispatcher ────────────────────────────────────────────────
 function handleSpecOps(feature, enabled) {
+  // Satellite signal-interference — trigger 200 ms glitch on every toggle.
+  if (glitchUniforms) {
+    glitchUniforms.u_intensity.value = 1.0;
+  }
+
   switch (feature) {
     case 'subsurface':
       subsurfaceActive = enabled;
