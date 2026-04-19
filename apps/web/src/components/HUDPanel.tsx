@@ -26,11 +26,20 @@ export interface ActiveLayers {
   labels: boolean;
 }
 
+export interface SpecOpsActiveState {
+  subsurface: boolean;
+  heroAsset:  boolean;
+  scanner:    boolean;
+  livePulse:  boolean;
+}
+
 interface Props {
   lat: number;
   lon: number;
   zoom: number;
   activeLayers: ActiveLayers;
+  /** Optional — Spec-Ops feature state (populated when any feature is active). */
+  specOpsActive?: Partial<SpecOpsActiveState>;
 }
 
 function useUTCClock(): string {
@@ -45,7 +54,7 @@ function useUTCClock(): string {
   return time;
 }
 
-export function HUDPanel({ lat, lon, zoom, activeLayers }: Props) {
+export function HUDPanel({ lat, lon, zoom, activeLayers, specOpsActive }: Props) {
   const [collapsed, setCollapsed] = useState(false);
   const utcTime = useUTCClock();
 
@@ -123,6 +132,40 @@ export function HUDPanel({ lat, lon, zoom, activeLayers }: Props) {
               </div>
             ))}
           </div>
+
+          {/* Spec-Ops active features (shown only when at least one is on) */}
+          {specOpsActive && Object.values(specOpsActive).some(Boolean) && (
+            <>
+              <div style={divider} />
+              <div style={section}>
+                <div style={{ ...sectionLabel, color: 'rgba(0,255,180,0.55)' }}>SPEC-OPS</div>
+                {specOpsActive.subsurface && (
+                  <div style={layerRow}>
+                    <span style={{ ...dot, color: '#00ffcc' }}>●</span>
+                    <span style={layerLabel}>🔬 Subsurface X-Ray</span>
+                  </div>
+                )}
+                {specOpsActive.heroAsset && (
+                  <div style={layerRow}>
+                    <span style={{ ...dot, color: '#b060ff' }}>●</span>
+                    <span style={layerLabel}>✨ Hero Asset</span>
+                  </div>
+                )}
+                {specOpsActive.scanner && (
+                  <div style={layerRow}>
+                    <span style={{ ...dot, color: '#ffd700' }}>●</span>
+                    <span style={layerLabel}>📡 Scanner</span>
+                  </div>
+                )}
+                {specOpsActive.livePulse && (
+                  <div style={layerRow}>
+                    <span style={{ ...dot, color: '#00e5ff' }}>●</span>
+                    <span style={layerLabel}>⚡ Live Pulse</span>
+                  </div>
+                )}
+              </div>
+            </>
+          )}
 
           <div style={divider} />
 

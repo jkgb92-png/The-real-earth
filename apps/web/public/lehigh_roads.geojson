@@ -1,0 +1,135 @@
+{
+  "type": "FeatureCollection",
+  "name": "lehigh_roads",
+  "crs": { "type": "name", "properties": { "name": "urn:ogc:def:crs:OGC:1.3:CRS84" } },
+  "features": [
+    {
+      "type": "Feature",
+      "properties": { "name": "Lee Blvd", "highway": "primary" },
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [-81.6617, 26.6133], [-81.6517, 26.6133], [-81.6417, 26.6133],
+          [-81.6317, 26.6133], [-81.6217, 26.6133], [-81.6117, 26.6133], [-81.6017, 26.6133]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": { "name": "Joel Blvd", "highway": "secondary" },
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [-81.6617, 26.6033], [-81.6417, 26.6033], [-81.6217, 26.6033], [-81.6017, 26.6033]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": { "name": "N Sunshine Blvd", "highway": "primary" },
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [-81.6317, 26.6333], [-81.6317, 26.6233], [-81.6317, 26.6133],
+          [-81.6317, 26.6033], [-81.6317, 26.5933]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": { "name": "Gunnery Rd N", "highway": "secondary" },
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [-81.6117, 26.6333], [-81.6117, 26.6233], [-81.6117, 26.6133],
+          [-81.6117, 26.6033], [-81.6117, 26.5933]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": { "name": "Homestead Rd N", "highway": "secondary" },
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [-81.6517, 26.6333], [-81.6517, 26.6233], [-81.6517, 26.6133],
+          [-81.6517, 26.6033], [-81.6517, 26.5933]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": { "name": "Capital Ave N", "highway": "secondary" },
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [-81.6417, 26.6333], [-81.6417, 26.6233], [-81.6417, 26.6133],
+          [-81.6417, 26.6033], [-81.6417, 26.5933]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": { "name": "Sunshine Pkwy", "highway": "secondary" },
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [-81.6217, 26.6333], [-81.6217, 26.6233], [-81.6217, 26.6133],
+          [-81.6217, 26.6033], [-81.6217, 26.5933]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": { "name": "E 18th St", "highway": "residential" },
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [-81.6617, 26.6333], [-81.6417, 26.6333], [-81.6217, 26.6333], [-81.6017, 26.6333]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": { "name": "E 14th St", "highway": "residential" },
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [-81.6617, 26.6233], [-81.6417, 26.6233], [-81.6217, 26.6233], [-81.6017, 26.6233]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": { "name": "Midline Rd", "highway": "residential" },
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [-81.6617, 26.6033], [-81.6417, 26.6033], [-81.6217, 26.6033], [-81.6017, 26.6033]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": { "name": "E 4th St", "highway": "residential" },
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [-81.6617, 26.5933], [-81.6417, 26.5933], [-81.6217, 26.5933], [-81.6017, 26.5933]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": { "name": "SR 82 (diagonal)", "highway": "trunk" },
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [-81.6617, 26.5933], [-81.6517, 26.6033], [-81.6417, 26.6083],
+          [-81.6317, 26.6133], [-81.6217, 26.6183], [-81.6117, 26.6233],
+          [-81.6017, 26.6333]
+        ]
+      }
+    }
+  ]
+}

@@ -45,6 +45,7 @@ import { SwipeCompare } from './SwipeCompare';
 import { useTilePrefetch } from '../hooks/useTilePrefetch';
 import { SavedLocationsPanel, SavedLocation } from './SavedLocationsPanel';
 import { WorkerTileCache } from '@the-real-earth/tile-cache';
+import { SpecOpsFeature } from './SpecOpsToolbar';
 
 const DEFAULT_TILE_SERVER_URL = 'http://localhost:8000';
 
@@ -294,6 +295,20 @@ export function EarthWebMap() {
     () => buildTerminatorGeoJSON(new Date()),
   );
 
+  // ── Spec-Ops feature state (globe mode only) ───────────────────────────────
+  const [specOpsActive, setSpecOpsActive] = useState({
+    subsurface: false,
+    heroAsset:  false,
+    scanner:    false,
+    livePulse:  false,
+  });
+
+  const handleSpecOpsChange = useCallback((feature: SpecOpsFeature, enabled: boolean) => {
+    setSpecOpsActive((prev: { subsurface: boolean; heroAsset: boolean; scanner: boolean; livePulse: boolean }) => ({
+      ...prev, [feature]: enabled,
+    }));
+  }, []);
+
   /**
    * dpr — device pixel ratio, read client-side to avoid SSR mismatches.
    * Passed as `pixelRatio` to the MapLibre Map so that:
@@ -469,7 +484,10 @@ export function EarthWebMap() {
   if (mode === 'globe') {
     return (
       <div style={{ position: 'relative', width: '100%', height: '100%' }}>
-        <GlobeIframe tileServerUrl={TILE_SERVER_URL} />
+        <GlobeIframe
+          tileServerUrl={TILE_SERVER_URL}
+          onSpecOpsChange={handleSpecOpsChange}
+        />
         <LayerDock
           mode="globe"
           layers={layers}
@@ -734,6 +752,7 @@ export function EarthWebMap() {
         lon={cursorLon}
         zoom={zoom}
         activeLayers={activeLayers}
+        specOpsActive={specOpsActive}
       />
 
       {/* Layer Switcher — top-centre segmented control for RGB / NDVI / SAR */}
