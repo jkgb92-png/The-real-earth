@@ -44,6 +44,7 @@ import { LayerSwitcher, BaseLayerId } from './LayerSwitcher';
 import { SwipeCompare } from './SwipeCompare';
 import { useTilePrefetch } from '../hooks/useTilePrefetch';
 import { SavedLocationsPanel, SavedLocation } from './SavedLocationsPanel';
+import { SearchBar } from './SearchBar';
 import { WorkerTileCache } from '@the-real-earth/tile-cache';
 import { SpecOpsFeature } from './SpecOpsToolbar';
 
@@ -467,6 +468,10 @@ export function EarthWebMap() {
     setMode((m) => (m === 'map' ? 'globe' : 'map'));
   }
 
+  function handleSearchSelect({ lat, lon, zoom: z }: { lat: number; lon: number; zoom: number }) {
+    mapRef.current?.flyTo({ center: [lon, lat], zoom: z, duration: 1500 });
+  }
+
   // Swipe Compare mode — renders a full-screen dual-map overlay
   if (layers.swipe) {
     return (
@@ -754,6 +759,9 @@ export function EarthWebMap() {
         activeLayers={activeLayers}
         specOpsActive={specOpsActive}
       />
+
+      {/* Search Bar — top-centre geocoding search */}
+      <SearchBar onSelect={handleSearchSelect} />
 
       {/* Layer Switcher — top-centre segmented control for RGB / NDVI / SAR */}
       {TILE_SERVER_AVAILABLE && (

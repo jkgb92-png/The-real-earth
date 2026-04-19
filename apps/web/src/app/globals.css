@@ -150,3 +150,14 @@ body {
  * MapLibre's built-in raster-fade-duration: 300ms on each layer handles
  * tile fade-in (opacity 0 → 1) as new tiles are painted.
  */
+
+/* ── Search bar animations ───────────────────────────────────────────────── */
+@keyframes slideInDown {
+  from { transform: translateX(-50%) translateY(-20px); opacity: 0; }
+  to   { transform: translateX(-50%) translateY(0);     opacity: 1; }
+}
+
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to   { transform: rotate(360deg); }
+}
