@@ -158,12 +158,6 @@ export function SearchBar({ onSelect }: Props) {
   const containerRef = useRef<HTMLDivElement>(null);
   const abortRef = useRef<AbortController | null>(null);
 
-  /** Filter the local LANDMARKS list by query string (case-insensitive). */
-  function matchLandmarks(q: string): NominatimResult[] {
-    const lower = q.toLowerCase();
-    return LANDMARKS.filter((l) => l.display_name.toLowerCase().includes(lower));
-  }
-
   const search = useCallback(async (q: string) => {
     if (!q.trim()) {
       setResults([]);
@@ -171,8 +165,14 @@ export function SearchBar({ onSelect }: Props) {
       return;
     }
 
+    // Filter the static landmarks list client-side (no API call needed).
+    // LANDMARKS is a stable module-level constant so this closure is safe.
+    const lower = q.toLowerCase();
+    const localMatches = LANDMARKS.filter((l) =>
+      l.display_name.toLowerCase().includes(lower)
+    );
+
     // Immediately show matching local landmarks while the network request is in flight.
-    const localMatches = matchLandmarks(q);
     if (localMatches.length > 0) {
       setResults(localMatches.slice(0, MAX_RESULTS));
       setOpen(true);
@@ -215,8 +215,7 @@ export function SearchBar({ onSelect }: Props) {
     } finally {
       setLoading(false);
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps -- setResults/setOpen/setHighlighted are stable setter functions; matchLandmarks is a pure helper defined in component scope that doesn't close over any state
-  }, []);
+  }, []); // LANDMARKS, MAX_RESULTS, NOMINATIM_URL are stable module-level constants
 
   // Debounce input changes
   useEffect(() => {

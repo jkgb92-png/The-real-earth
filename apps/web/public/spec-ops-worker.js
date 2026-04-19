@@ -620,8 +620,10 @@ const orbit = {
 
   // Proportional zoom — speed scales with current distance so it feels
   // consistent whether you're 100 m out or 5 km away.
+  // ZOOM_SENSITIVITY: fraction of radius added/removed per wheel delta unit.
   onWheel(deltaY) {
-    const factor  = 1 + deltaY * 0.001;
+    const ZOOM_SENSITIVITY = 0.001;
+    const factor  = 1 + deltaY * ZOOM_SENSITIVITY;
     this.radius   = Math.max(50, Math.min(8000, this.radius * factor));
   },
 
@@ -1083,7 +1085,9 @@ function renderFrame(now) {
 
   // ── Render (skip when nothing to show) ────────────────────────────────────
   const tilesLoading = tilesRenderer && tilesRenderer.pending > 0;
-  const orbitCoasting = Math.abs(orbit.thetaVel) > 0.0002 || Math.abs(orbit.phiVel) > 0.0002;
+  // VELOCITY_THRESHOLD: minimum angular speed (rad/frame) considered "coasting".
+  const VELOCITY_THRESHOLD = 0.0002;
+  const orbitCoasting = Math.abs(orbit.thetaVel) > VELOCITY_THRESHOLD || Math.abs(orbit.phiVel) > VELOCITY_THRESHOLD;
   const anyActive = subsurfaceActive || heroAssetActive || livePulseActive || scannerActive
     || tilesLoading
     || (glitchUniforms && glitchUniforms.u_intensity.value > 0.01)
