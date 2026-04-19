@@ -543,17 +543,30 @@ class MockDataStream {
 
 // ── Orbit camera controller (worker-compatible, no DOM) ───────────────────────
 const orbit = {
-  radius:      2000,
-  theta:       -0.3,           // azimuth
-  phi:          0.65,          // elevation (0 = top, PI/2 = horizon)
-  isDragging:  false,
-  lastX:       0,
-  lastY:       0,
-  center:      null,           // THREE.Vector3 — initialised in initScene()
+  radius:         2000,
+  theta:          -0.3,          // azimuth
+  phi:             0.65,         // elevation (0 = top, PI/2 = horizon)
+  isDragging:     false,
+  isPanning:      false,         // right/middle-click pan mode
+  lastX:          0,
+  lastY:          0,
+  center:         null,          // THREE.Vector3 — initialised in initScene()
+  // Inertia — exponentially decayed per frame after mouse release
+  thetaVel:       0,
+  phiVel:         0,
+  // Pinch-to-zoom state
+  lastPinchDist:  0,
 
   init() { this.center = new THREE.Vector3(0, 0, 0); },
 
   updateCamera(cam) {
+    // Apply inertia: decay toward zero so the camera coasts after release.
+    if (!this.isDragging) {
+      this.thetaVel *= 0.88;
+      this.phiVel   *= 0.88;
+      this.theta    += this.thetaVel;
+      this.phi       = Math.max(0.05, Math.min(Math.PI * 0.49, this.phi + this.phiVel));
+    }
     const r = this.radius;
     cam.position.set(
       this.center.x + r * Math.sin(this.phi) * Math.sin(this.theta),
@@ -563,22 +576,88 @@ const orbit = {
     cam.lookAt(this.center);
   },
 
-  onMouseDown(x, y) { this.isDragging = true; this.lastX = x; this.lastY = y; },
-  onMouseMove(x, y) {
-    if (!this.isDragging) return;
-    this.theta -= (x - this.lastX) * 0.005;
-    this.phi    = Math.max(0.05, Math.min(Math.PI * 0.49, this.phi - (y - this.lastY) * 0.005));
-    this.lastX  = x;
-    this.lastY  = y;
+  onMouseDown(x, y, button) {
+    // button 0 = left (orbit), button 1 = middle (pan), button 2 = right (pan)
+    if (button === 1 || button === 2) {
+      this.isPanning  = true;
+      this.isDragging = false;
+    } else {
+      this.isDragging = true;
+      this.isPanning  = false;
+      this.thetaVel   = 0;
+      this.phiVel     = 0;
+    }
+    this.lastX = x;
+    this.lastY = y;
   },
-  onMouseUp()        { this.isDragging = false; },
-  onWheel(deltaY)    { this.radius = Math.max(50, Math.min(5000, this.radius + deltaY * 0.5)); },
+
+  onMouseMove(x, y) {
+    const dx = x - this.lastX;
+    const dy = y - this.lastY;
+
+    if (this.isDragging) {
+      const dTheta    = -dx * 0.005;
+      const dPhi      = -dy * 0.005;
+      this.theta     += dTheta;
+      this.phi        = Math.max(0.05, Math.min(Math.PI * 0.49, this.phi + dPhi));
+      // Accumulate velocity with exponential smoothing for inertia.
+      this.thetaVel   = this.thetaVel * 0.6 + dTheta * 0.4;
+      this.phiVel     = this.phiVel   * 0.6 + dPhi   * 0.4;
+    } else if (this.isPanning) {
+      // Pan the look-at center in camera-local XZ / Y directions.
+      const panScale = this.radius * 0.001;
+      const rightX   =  Math.cos(this.theta);
+      const rightZ   = -Math.sin(this.theta);
+      this.center.x -= rightX * dx * panScale;
+      this.center.z -= rightZ * dx * panScale;
+      this.center.y += dy * panScale;
+    }
+
+    this.lastX = x;
+    this.lastY = y;
+  },
+
+  onMouseUp() {
+    this.isDragging = false;
+    this.isPanning  = false;
+  },
+
+  // Proportional zoom — speed scales with current distance so it feels
+  // consistent whether you're 100 m out or 5 km away.
+  onWheel(deltaY) {
+    const factor  = 1 + deltaY * 0.001;
+    this.radius   = Math.max(50, Math.min(8000, this.radius * factor));
+  },
+
+  onPinch(dist) {
+    if (this.lastPinchDist > 0) {
+      const factor  = this.lastPinchDist / dist;
+      this.radius   = Math.max(50, Math.min(8000, this.radius * factor));
+    }
+    this.lastPinchDist = dist;
+  },
+
+  onPinchEnd() { this.lastPinchDist = 0; },
+
+  // Reset to the initial bird's-eye view.
+  resetView() {
+    this.theta      = -0.3;
+    this.phi        =  0.65;
+    this.radius     =  2000;
+    this.thetaVel   =  0;
+    this.phiVel     =  0;
+    this.center.set(0, 0, 0);
+  },
 };
 
 // ── Runtime state ─────────────────────────────────────────────────────────────
 let renderer, scene, camera, composer, scannerPass, glitchPass, clock;
 let canvasWidth  = 800;
 let canvasHeight = 600;
+
+// Countdown (frames) to keep rendering after the last camera interaction,
+// covering inertia coast-down even when no SpecOps feature is active.
+let cameraDirty  = 0;
 
 // Feature flags
 let subsurfaceActive = false;
@@ -1007,10 +1086,15 @@ function renderFrame(now) {
 
   // ── Render (skip when nothing to show) ────────────────────────────────────
   const tilesLoading = tilesRenderer && tilesRenderer.pending > 0;
+  const orbitCoasting = Math.abs(orbit.thetaVel) > 0.0002 || Math.abs(orbit.phiVel) > 0.0002;
   const anyActive = subsurfaceActive || heroAssetActive || livePulseActive || scannerActive
     || tilesLoading
-    || (glitchUniforms && glitchUniforms.u_intensity.value > 0.01);
+    || (glitchUniforms && glitchUniforms.u_intensity.value > 0.01)
+    || orbit.isDragging || orbit.isPanning
+    || orbitCoasting
+    || cameraDirty > 0;
   if (anyActive) {
+    if (cameraDirty > 0) cameraDirty--;
     composer.render();
   }
 }
@@ -1140,10 +1224,11 @@ self.onmessage = function onMessage(e) {
 
     case 'mousemove':
       orbit.onMouseMove(msg.x, msg.y);
+      cameraDirty = 20;
       break;
 
     case 'mousedown':
-      if (msg.button === 0) orbit.onMouseDown(msg.x, msg.y);
+      orbit.onMouseDown(msg.x, msg.y, msg.button || 0);
       break;
 
     case 'mouseup':
@@ -1152,6 +1237,21 @@ self.onmessage = function onMessage(e) {
 
     case 'wheel':
       orbit.onWheel(msg.deltaY);
+      cameraDirty = 20;
+      break;
+
+    case 'dblclick':
+      orbit.resetView();
+      cameraDirty = 30;
+      break;
+
+    case 'pinch':
+      orbit.onPinch(msg.dist);
+      cameraDirty = 20;
+      break;
+
+    case 'pinchend':
+      orbit.onPinchEnd();
       break;
 
     case 'specOps':
