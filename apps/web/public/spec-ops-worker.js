@@ -734,10 +734,12 @@ function createHeroPlaceholder() {
   const positions = new Float32Array(COUNT * 3);
 
   for (let i = 0; i < COUNT; i++) {
-    // Box-Muller Gaussian distribution → spheroidal cloud.
-    // Box-Muller transform — converts two uniform [0,1] samples into a Gaussian.
-    // 1e-10 is added before log() as a defensive guard; Math.random() never returns
-    // exactly 0, but this makes the intent explicit and protects against edge cases.
+    // Box-Muller transform — converts two independent uniform [0,1] samples
+    // (Math.random() called twice: once for `r`, once for `theta`) into a
+    // Gaussian-distributed magnitude.
+    // 1e-10 is added before log() as a defensive guard; Math.random() never
+    // returns exactly 0, but this makes the intent explicit and protects
+    // against edge cases.
     const r      = Math.sqrt(-2 * Math.log(Math.random() + 1e-10));
     const theta  = Math.random() * Math.PI * 2;
     const phi    = Math.acos(2 * Math.random() - 1);
