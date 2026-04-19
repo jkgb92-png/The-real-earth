@@ -88,9 +88,14 @@ export function SpecOpsToolbar({ iframeRef, onToggle }: Props) {
     setState((prev) => ({ ...prev, [key]: enabled }));
 
     // Forward to the spec-ops-worker.js via globe.html's message relay.
+    // Use the iframe's origin if available; fall back to '*' for same-origin
+    // and GitHub Pages deployments where the exact origin may vary.
+    const targetOrigin =
+      iframeRef.current?.contentWindow?.location.origin ?? window.location.origin;
+
     iframeRef.current?.contentWindow?.postMessage(
       { type: 'specOps', feature: key, enabled },
-      '*'
+      targetOrigin
     );
 
     onToggle?.(key, enabled);

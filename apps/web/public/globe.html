@@ -333,12 +333,14 @@
           // OffscreenCanvas not supported — log warning, degrade gracefully.
           console.warn('[SpecOps] OffscreenCanvas not supported in this browser. ' +
                        'Spec-Ops Three.js features will not render.');
+          // Notify parent React app so the SpecOpsToolbar can be hidden.
+          window.parent.postMessage({ type: 'specOpsUnavailable' }, window.parent.location.origin || '*');
           return;
         }
 
         const offscreen  = canvas.transferControlToOffscreen();
         const workerUrl  = new URL('./spec-ops-worker.js', location.href).href;
-        const googleKey  = params.get('googleApiKey') || '';
+        const googleKey  = new URLSearchParams(location.search).get('googleApiKey') || '';
 
         worker = new Worker(workerUrl);
         worker.onmessage = handleWorkerMessage;

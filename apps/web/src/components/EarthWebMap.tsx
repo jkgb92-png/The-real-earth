@@ -304,8 +304,10 @@ export function EarthWebMap() {
   });
 
   const handleSpecOpsChange = useCallback((feature: SpecOpsFeature, enabled: boolean) => {
-    setSpecOpsActive((prev: typeof specOpsActive) => ({ ...prev, [feature]: enabled }));
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+    setSpecOpsActive((prev: { subsurface: boolean; heroAsset: boolean; scanner: boolean; livePulse: boolean }) => ({
+      ...prev, [feature]: enabled,
+    }));
+  }, []);
 
   /**
    * dpr — device pixel ratio, read client-side to avoid SSR mismatches.
