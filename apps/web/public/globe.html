@@ -339,7 +339,11 @@
         }
 
         const offscreen  = canvas.transferControlToOffscreen();
-        const workerUrl  = new URL('./spec-ops-worker.js', location.href).href;
+        // Use a plain relative path so the worker resolves to the same
+        // directory as globe.html regardless of basePath.  This works on
+        // GitHub Pages (/The-real-earth/) and in local dev without any
+        // special configuration.
+        const workerUrl  = './spec-ops-worker.js';
         const googleKey  = new URLSearchParams(location.search).get('googleApiKey') || '';
 
         worker = new Worker(workerUrl);
