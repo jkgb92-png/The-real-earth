@@ -349,6 +349,13 @@ class SimpleTilesRenderer {
     this.group    = new THREE.Group();
     this.loader   = new THREE.GLTFLoader();
     this.pending  = 0;
+    // LOD aggression: lower value → load higher-resolution tiles sooner.
+    // Clamped to [0.1, 2.0] to prevent division-by-zero or runaway depth.
+    this.geometricErrorMultiplier = 0.5;
+    // Pre-compute max recursion depth from multiplier (0.5 → depth 4, 1.0 → depth 2).
+    this._maxDepth = Math.round(2 / Math.max(0.1, Math.min(2.0, this.geometricErrorMultiplier)));
+    // Keep more tiles resident to prevent flickering during rapid panning.
+    this.maxCacheSize = 400;
     scene.add(this.group);
 
     this._fetchAndProcess(tilesetUrl, new THREE.Matrix4(), 0);
@@ -382,7 +389,7 @@ class SimpleTilesRenderer {
 
     // Load content if present and within depth budget.
     const uri = (tile.content && (tile.content.uri || tile.content.url)) || null;
-    if (uri && depth <= 2) {
+    if (uri && depth <= this._maxDepth) {
       const fullUrl = /^https?:\/\//.test(uri) ? uri : new URL(uri, baseUrl).href;
       if (/\.(glb|gltf|b3dm)/i.test(fullUrl.split('?')[0])) {
         this.pending++;
@@ -390,6 +397,22 @@ class SimpleTilesRenderer {
           fullUrl,
           (gltf) => {
             gltf.scene.applyMatrix4(matrix);
+            // Apply texture sharpening to every material in the loaded tile.
+            const maxAnisotropy = renderer.capabilities.getMaxAnisotropy();
+            gltf.scene.traverse((node) => {
+              if (!node.isMesh) return;
+              [].concat(node.material).forEach((mat) => {
+                if (!mat) return;
+                ['map', 'normalMap', 'roughnessMap', 'metalnessMap', 'emissiveMap'].forEach((slot) => {
+                  const tex = mat[slot];
+                  if (!tex) return;
+                  tex.magFilter  = THREE.LinearFilter;
+                  tex.minFilter  = THREE.LinearMipmapLinearFilter;
+                  tex.anisotropy = maxAnisotropy;
+                  tex.needsUpdate = true;
+                });
+              });
+            });
             this.group.add(gltf.scene);
             this.pending--;
           },
@@ -400,7 +423,7 @@ class SimpleTilesRenderer {
     }
 
     // Recurse into children.
-    if (tile.children && depth < 2) {
+    if (tile.children && depth < this._maxDepth) {
       tile.children.forEach((child) =>
         this._processTile(child, baseUrl, matrix, depth + 1)
       );
@@ -516,17 +539,30 @@ class MockDataStream {
 
 // ── Orbit camera controller (worker-compatible, no DOM) ───────────────────────
 const orbit = {
-  radius:      2000,
-  theta:       -0.3,           // azimuth
-  phi:          0.65,          // elevation (0 = top, PI/2 = horizon)
-  isDragging:  false,
-  lastX:       0,
-  lastY:       0,
-  center:      null,           // THREE.Vector3 — initialised in initScene()
+  radius:         2000,
+  theta:          -0.3,          // azimuth
+  phi:             0.65,         // elevation (0 = top, PI/2 = horizon)
+  isDragging:     false,
+  isPanning:      false,         // right/middle-click pan mode
+  lastX:          0,
+  lastY:          0,
+  center:         null,          // THREE.Vector3 — initialised in initScene()
+  // Inertia — exponentially decayed per frame after mouse release
+  thetaVel:       0,
+  phiVel:         0,
+  // Pinch-to-zoom state
+  lastPinchDist:  0,
 
   init() { this.center = new THREE.Vector3(0, 0, 0); },
 
   updateCamera(cam) {
+    // Apply inertia: decay toward zero so the camera coasts after release.
+    if (!this.isDragging) {
+      this.thetaVel *= 0.88;
+      this.phiVel   *= 0.88;
+      this.theta    += this.thetaVel;
+      this.phi       = Math.max(0.05, Math.min(Math.PI * 0.49, this.phi + this.phiVel));
+    }
     const r = this.radius;
     cam.position.set(
       this.center.x + r * Math.sin(this.phi) * Math.sin(this.theta),
@@ -536,22 +572,90 @@ const orbit = {
     cam.lookAt(this.center);
   },
 
-  onMouseDown(x, y) { this.isDragging = true; this.lastX = x; this.lastY = y; },
-  onMouseMove(x, y) {
-    if (!this.isDragging) return;
-    this.theta -= (x - this.lastX) * 0.005;
-    this.phi    = Math.max(0.05, Math.min(Math.PI * 0.49, this.phi - (y - this.lastY) * 0.005));
-    this.lastX  = x;
-    this.lastY  = y;
+  onMouseDown(x, y, button) {
+    // button 0 = left (orbit), button 1 = middle (pan), button 2 = right (pan)
+    if (button === 1 || button === 2) {
+      this.isPanning  = true;
+      this.isDragging = false;
+    } else {
+      this.isDragging = true;
+      this.isPanning  = false;
+      this.thetaVel   = 0;
+      this.phiVel     = 0;
+    }
+    this.lastX = x;
+    this.lastY = y;
   },
-  onMouseUp()        { this.isDragging = false; },
-  onWheel(deltaY)    { this.radius = Math.max(50, Math.min(5000, this.radius + deltaY * 0.5)); },
+
+  onMouseMove(x, y) {
+    const dx = x - this.lastX;
+    const dy = y - this.lastY;
+
+    if (this.isDragging) {
+      const dTheta    = -dx * 0.005;
+      const dPhi      = -dy * 0.005;
+      this.theta     += dTheta;
+      this.phi        = Math.max(0.05, Math.min(Math.PI * 0.49, this.phi + dPhi));
+      // Accumulate velocity with exponential smoothing for inertia.
+      this.thetaVel   = this.thetaVel * 0.6 + dTheta * 0.4;
+      this.phiVel     = this.phiVel   * 0.6 + dPhi   * 0.4;
+    } else if (this.isPanning) {
+      // Pan the look-at center in camera-local XZ / Y directions.
+      const panScale = this.radius * 0.001;
+      const rightX   =  Math.cos(this.theta);
+      const rightZ   = -Math.sin(this.theta);
+      this.center.x -= rightX * dx * panScale;
+      this.center.z -= rightZ * dx * panScale;
+      this.center.y += dy * panScale;
+    }
+
+    this.lastX = x;
+    this.lastY = y;
+  },
+
+  onMouseUp() {
+    this.isDragging = false;
+    this.isPanning  = false;
+  },
+
+  // Proportional zoom — speed scales with current distance so it feels
+  // consistent whether you're 100 m out or 5 km away.
+  // ZOOM_SENSITIVITY: fraction of radius added/removed per wheel delta unit.
+  onWheel(deltaY) {
+    const ZOOM_SENSITIVITY = 0.001;
+    const factor  = 1 + deltaY * ZOOM_SENSITIVITY;
+    this.radius   = Math.max(50, Math.min(8000, this.radius * factor));
+  },
+
+  onPinch(dist) {
+    if (this.lastPinchDist > 0) {
+      const factor  = this.lastPinchDist / dist;
+      this.radius   = Math.max(50, Math.min(8000, this.radius * factor));
+    }
+    this.lastPinchDist = dist;
+  },
+
+  onPinchEnd() { this.lastPinchDist = 0; },
+
+  // Reset to the initial bird's-eye view.
+  resetView() {
+    this.theta      = -0.3;
+    this.phi        =  0.65;
+    this.radius     =  2000;
+    this.thetaVel   =  0;
+    this.phiVel     =  0;
+    this.center.set(0, 0, 0);
+  },
 };
 
 // ── Runtime state ─────────────────────────────────────────────────────────────
 let renderer, scene, camera, composer, scannerPass, glitchPass, clock;
 let canvasWidth  = 800;
 let canvasHeight = 600;
+
+// Countdown (frames) to keep rendering after the last camera interaction,
+// covering inertia coast-down even when no SpecOps feature is active.
+let cameraDirty  = 0;
 
 // Feature flags
 let subsurfaceActive = false;
@@ -602,7 +706,8 @@ function initScene(canvas, width, height, apiKey) {
     premultipliedAlpha: false,
   });
   renderer.setSize(width, height, false); // false = skip CSS update (OffscreenCanvas)
-  renderer.setPixelRatio(1);              // fixed at 1 for Chromebook perf
+  // Cap at 2× to avoid 4×/9× pixel overhead on Retina/high-DPI displays.
+  renderer.setPixelRatio(Math.min(self.devicePixelRatio || 1, 2));
   renderer.localClippingEnabled = true;
   renderer.setClearColor(0x000000, 0);    // fully transparent clear
 
@@ -980,10 +1085,17 @@ function renderFrame(now) {
 
   // ── Render (skip when nothing to show) ────────────────────────────────────
   const tilesLoading = tilesRenderer && tilesRenderer.pending > 0;
+  // VELOCITY_THRESHOLD: minimum angular speed (rad/frame) considered "coasting".
+  const VELOCITY_THRESHOLD = 0.0002;
+  const orbitCoasting = Math.abs(orbit.thetaVel) > VELOCITY_THRESHOLD || Math.abs(orbit.phiVel) > VELOCITY_THRESHOLD;
   const anyActive = subsurfaceActive || heroAssetActive || livePulseActive || scannerActive
     || tilesLoading
-    || (glitchUniforms && glitchUniforms.u_intensity.value > 0.01);
+    || (glitchUniforms && glitchUniforms.u_intensity.value > 0.01)
+    || orbit.isDragging || orbit.isPanning
+    || orbitCoasting
+    || cameraDirty > 0;
   if (anyActive) {
+    if (cameraDirty > 0) cameraDirty--;
     composer.render();
   }
 }
@@ -1113,10 +1225,11 @@ self.onmessage = function onMessage(e) {
 
     case 'mousemove':
       orbit.onMouseMove(msg.x, msg.y);
+      cameraDirty = 20;
       break;
 
     case 'mousedown':
-      if (msg.button === 0) orbit.onMouseDown(msg.x, msg.y);
+      orbit.onMouseDown(msg.x, msg.y, msg.button || 0);
       break;
 
     case 'mouseup':
@@ -1125,6 +1238,21 @@ self.onmessage = function onMessage(e) {
 
     case 'wheel':
       orbit.onWheel(msg.deltaY);
+      cameraDirty = 20;
+      break;
+
+    case 'dblclick':
+      orbit.resetView();
+      cameraDirty = 30;
+      break;
+
+    case 'pinch':
+      orbit.onPinch(msg.dist);
+      cameraDirty = 20;
+      break;
+
+    case 'pinchend':
+      orbit.onPinchEnd();
       break;
 
     case 'specOps':
