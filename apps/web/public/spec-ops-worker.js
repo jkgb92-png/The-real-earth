@@ -361,9 +361,10 @@ class SimpleTilesRenderer {
         // Detect authentication/authorisation failures (invalid or missing
         // Google Maps API key) and log a distinct sentinel so it is easy to
         // diagnose in the browser console without sifting through generic
-        // network errors.
+        // network errors.  The URL is intentionally omitted from the log to
+        // avoid leaking the API key into the console.
         if (res.status === 401 || res.status === 403) {
-          console.error('TILE_AUTH_ERROR', res.status, url);
+          console.error('TILE_AUTH_ERROR', res.status);
         }
         return;
       }

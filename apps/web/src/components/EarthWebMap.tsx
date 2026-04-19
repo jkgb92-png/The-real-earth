@@ -353,6 +353,7 @@ export function EarthWebMap() {
   }, []);
 
   useEffect(() => {
+    if (typeof window === 'undefined') return;
     localStorage.setItem('earth-saved-locations', JSON.stringify(savedLocations));
   }, [savedLocations]);
 
