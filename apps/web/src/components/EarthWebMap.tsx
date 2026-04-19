@@ -146,7 +146,10 @@ const sentinelLayer: RasterLayerSpecification = {
   id: 'sentinel-layer',
   type: 'raster',
   source: 'sentinel',
-  paint: { 'raster-opacity': 1, 'raster-resampling': 'nearest', 'raster-fade-duration': 300 },
+  // fade-duration=0: tiles pop in instantly — eliminates the blurry upscaled
+  // parent tile visible during the cross-fade window, which is particularly
+  // noticeable over featureless areas like Antarctic ice and open ocean.
+  paint: { 'raster-opacity': 1, 'raster-resampling': 'nearest', 'raster-fade-duration': 0 },
 };
 
 const ndviLayer: RasterLayerSpecification = {
@@ -154,7 +157,7 @@ const ndviLayer: RasterLayerSpecification = {
   type: 'raster',
   source: 'ndvi',
   minzoom: 10,
-  paint: { 'raster-opacity': 1, 'raster-resampling': 'nearest', 'raster-fade-duration': 300 },
+  paint: { 'raster-opacity': 1, 'raster-resampling': 'nearest', 'raster-fade-duration': 0 },
 };
 
 const sarLayer: RasterLayerSpecification = {
@@ -162,7 +165,7 @@ const sarLayer: RasterLayerSpecification = {
   type: 'raster',
   source: 'sar',
   minzoom: 6,
-  paint: { 'raster-opacity': 1, 'raster-resampling': 'nearest', 'raster-fade-duration': 300 },
+  paint: { 'raster-opacity': 1, 'raster-resampling': 'nearest', 'raster-fade-duration': 0 },
 };
 
 const bathymetryLayer: RasterLayerSpecification = {
