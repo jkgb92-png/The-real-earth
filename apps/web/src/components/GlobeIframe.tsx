@@ -30,9 +30,10 @@ interface Props {
 export function GlobeIframe({ tileServerUrl, onSpecOpsChange }: Props) {
   const iframeRef = useRef<HTMLIFrameElement>(null);
 
-  // Use a relative URL so it works both on GitHub Pages (basePath=/The-real-earth)
-  // and in local dev / standalone deployments without needing a route handler.
-  const src = `globe.html?tileServer=${encodeURIComponent(tileServerUrl)}`;
+  // Use an explicit relative path (./globe.html) so it resolves correctly
+  // on GitHub Pages (basePath=/The-real-earth) and in local dev / standalone
+  // deployments without needing a route handler.
+  const src = `./globe.html?tileServer=${encodeURIComponent(tileServerUrl)}`;
 
   return (
     <div style={{ position: 'relative', width: '100%', height: '100%' }}>

@@ -310,6 +310,14 @@ export function EarthWebMap() {
   }, []);
 
   /**
+   * mounted — becomes true after the first client-side effect fires.
+   * Keeps the 3D canvas (GlobeIframe) and its Worker from being initialised
+   * during SSR, which would cause React hydration Error #418.
+   */
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => { setMounted(true); }, []);
+
+  /**
    * dpr — device pixel ratio, read client-side to avoid SSR mismatches.
    * Passed as `pixelRatio` to the MapLibre Map so that:
    *  1. The WebGL canvas is sized at the full physical resolution of the screen.
@@ -329,15 +337,20 @@ export function EarthWebMap() {
     return () => mql.removeEventListener('change', onDprChange);
   }, []);
   // ── Saved locations ────────────────────────────────────────────────────────
-  const [savedLocations, setSavedLocations] = useState<SavedLocation[]>(() => {
-    if (typeof window === 'undefined') return [];
+  // Always initialise as [] on both server and client to avoid SSR/hydration
+  // mismatch (Error #418). The localStorage value is loaded in a separate
+  // useEffect so it only runs on the client, after hydration is complete.
+  const [savedLocations, setSavedLocations] = useState<SavedLocation[]>([]);
+
+  // Hydrate from localStorage once on mount.
+  useEffect(() => {
     try {
       const stored = localStorage.getItem('earth-saved-locations');
-      return stored ? (JSON.parse(stored) as SavedLocation[]) : [];
+      if (stored) setSavedLocations(JSON.parse(stored) as SavedLocation[]);
     } catch {
-      return [];
+      // ignore parse errors
     }
-  });
+  }, []);
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
@@ -484,10 +497,14 @@ export function EarthWebMap() {
   if (mode === 'globe') {
     return (
       <div style={{ position: 'relative', width: '100%', height: '100%' }}>
-        <GlobeIframe
-          tileServerUrl={TILE_SERVER_URL}
-          onSpecOpsChange={handleSpecOpsChange}
-        />
+        {/* Only initialise the 3D canvas + Worker on the client to prevent
+            React hydration Error #418 (SSR/client tree mismatch). */}
+        {mounted && (
+          <GlobeIframe
+            tileServerUrl={TILE_SERVER_URL}
+            onSpecOpsChange={handleSpecOpsChange}
+          />
+        )}
         <LayerDock
           mode="globe"
           layers={layers}
