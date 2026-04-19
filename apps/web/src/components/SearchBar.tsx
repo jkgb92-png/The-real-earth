@@ -215,7 +215,7 @@ export function SearchBar({ onSelect }: Props) {
     } finally {
       setLoading(false);
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- setResults/setOpen/setHighlighted are stable setter functions; matchLandmarks is a pure helper defined in component scope that doesn't close over any state
   }, []);
 
   // Debounce input changes

@@ -383,17 +383,13 @@ class SimpleTilesRenderer {
   _processTile(tile, baseUrl, parentMatrix, depth) {
     if (!tile) return;
 
-    // Compute effective max depth from geometricErrorMultiplier:
-    // a lower multiplier means we load more detail levels (higher maxDepth).
-    const maxDepth = Math.round(2 / this.geometricErrorMultiplier);
-
     // Accumulate this tile's transform.
     const matrix = parentMatrix.clone();
     if (tile.transform) matrix.multiply(new THREE.Matrix4().fromArray(tile.transform));
 
     // Load content if present and within depth budget.
     const uri = (tile.content && (tile.content.uri || tile.content.url)) || null;
-    if (uri && depth <= maxDepth) {
+    if (uri && depth <= this._maxDepth) {
       const fullUrl = /^https?:\/\//.test(uri) ? uri : new URL(uri, baseUrl).href;
       if (/\.(glb|gltf|b3dm)/i.test(fullUrl.split('?')[0])) {
         this.pending++;
@@ -427,7 +423,7 @@ class SimpleTilesRenderer {
     }
 
     // Recurse into children.
-    if (tile.children && depth < maxDepth) {
+    if (tile.children && depth < this._maxDepth) {
       tile.children.forEach((child) =>
         this._processTile(child, baseUrl, matrix, depth + 1)
       );
@@ -708,7 +704,8 @@ function initScene(canvas, width, height, apiKey) {
     premultipliedAlpha: false,
   });
   renderer.setSize(width, height, false); // false = skip CSS update (OffscreenCanvas)
-  renderer.setPixelRatio(self.devicePixelRatio || 1); // match device DPR for full-resolution rendering
+  // Cap at 2× to avoid 4×/9× pixel overhead on Retina/high-DPI displays.
+  renderer.setPixelRatio(Math.min(self.devicePixelRatio || 1, 2));
   renderer.localClippingEnabled = true;
   renderer.setClearColor(0x000000, 0);    // fully transparent clear
 
