@@ -90,7 +90,7 @@ function useGlitchCoords(lat: number, lon: number) {
         spinRef.current = null;
         setDisplay({ lat, lon });
       } else {
-        // Random digits in the same ±0.5° range to look plausible.
+        // Random offset ±0.005° keeps the spinning digits plausible (sub-km range).
         setDisplay({
           lat: lat + (Math.random() - 0.5) * 0.01,
           lon: lon + (Math.random() - 0.5) * 0.01,

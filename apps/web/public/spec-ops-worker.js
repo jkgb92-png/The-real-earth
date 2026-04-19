@@ -234,6 +234,8 @@ void main() {
     vWorldPos  = wp.xyz;
     /* Use model-matrix translation as a unique seed per building. */
     vOccupancy = rand(modelMatrix[3][0] * 0.01 + modelMatrix[3][2] * 0.007);
+    /* 0.01 / 0.007 scale the model-matrix translation components (world units) into
+       a ~[0,1] range with enough spread that adjacent buildings get different hashes. */
     gl_Position = projectionMatrix * viewMatrix * wp;
 }`;
 
@@ -435,7 +437,10 @@ class MockDataStream {
     this._burstId      = null;
     this._burstSegment = 0;   // which segment is currently bursting (cycles 0–11)
     this._burstStart   = -1;  // performance.now() when the burst on this segment began
-    this._BURST_DURATION_MS = 1200; // how long a single segment burst lasts
+    /* _BURST_DURATION_MS is per-segment, not the full cycle.
+       Full cycle = _BURST_DURATION_MS + 3500 ms gap between segment bursts.
+       This keeps each burst visually distinct before the next one fires. */
+    this._BURST_DURATION_MS = 1200;
   }
 
   start() {
@@ -717,6 +722,9 @@ function createHeroPlaceholder() {
 
   for (let i = 0; i < COUNT; i++) {
     // Box-Muller Gaussian distribution → spheroidal cloud.
+    // Box-Muller transform — converts two uniform [0,1] samples into a Gaussian.
+    // 1e-10 is added before log() as a defensive guard; Math.random() never returns
+    // exactly 0, but this makes the intent explicit and protects against edge cases.
     const r      = Math.sqrt(-2 * Math.log(Math.random() + 1e-10));
     const theta  = Math.random() * Math.PI * 2;
     const phi    = Math.acos(2 * Math.random() - 1);

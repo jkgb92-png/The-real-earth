@@ -253,6 +253,9 @@ float rand(float n) { return fract(sin(n * 127.1) * 43758.5453); }
 void main() {
     vec4 wp    = modelMatrix * vec4(position, 1.0);
     vWorldPos  = wp.xyz;
+    /* 0.01 / 0.007: scale world-unit translation components so adjacent buildings
+       map to distinct positions in hash-space. Incommensurable factors prevent
+       column/row aliasing in the pseudo-random output. */
     vOccupancy = rand(modelMatrix[3][0] * 0.01 + modelMatrix[3][2] * 0.007);
     gl_Position = projectionMatrix * viewMatrix * wp;
 }
