@@ -349,6 +349,13 @@ class SimpleTilesRenderer {
     this.group    = new THREE.Group();
     this.loader   = new THREE.GLTFLoader();
     this.pending  = 0;
+    // LOD aggression: lower value → load higher-resolution tiles sooner.
+    // Clamped to [0.1, 2.0] to prevent division-by-zero or runaway depth.
+    this.geometricErrorMultiplier = 0.5;
+    // Pre-compute max recursion depth from multiplier (0.5 → depth 4, 1.0 → depth 2).
+    this._maxDepth = Math.round(2 / Math.max(0.1, Math.min(2.0, this.geometricErrorMultiplier)));
+    // Keep more tiles resident to prevent flickering during rapid panning.
+    this.maxCacheSize = 400;
     scene.add(this.group);
 
     this._fetchAndProcess(tilesetUrl, new THREE.Matrix4(), 0);
@@ -376,13 +383,17 @@ class SimpleTilesRenderer {
   _processTile(tile, baseUrl, parentMatrix, depth) {
     if (!tile) return;
 
+    // Compute effective max depth from geometricErrorMultiplier:
+    // a lower multiplier means we load more detail levels (higher maxDepth).
+    const maxDepth = Math.round(2 / this.geometricErrorMultiplier);
+
     // Accumulate this tile's transform.
     const matrix = parentMatrix.clone();
     if (tile.transform) matrix.multiply(new THREE.Matrix4().fromArray(tile.transform));
 
     // Load content if present and within depth budget.
     const uri = (tile.content && (tile.content.uri || tile.content.url)) || null;
-    if (uri && depth <= 2) {
+    if (uri && depth <= maxDepth) {
       const fullUrl = /^https?:\/\//.test(uri) ? uri : new URL(uri, baseUrl).href;
       if (/\.(glb|gltf|b3dm)/i.test(fullUrl.split('?')[0])) {
         this.pending++;
@@ -390,6 +401,22 @@ class SimpleTilesRenderer {
           fullUrl,
           (gltf) => {
             gltf.scene.applyMatrix4(matrix);
+            // Apply texture sharpening to every material in the loaded tile.
+            const maxAnisotropy = renderer.capabilities.getMaxAnisotropy();
+            gltf.scene.traverse((node) => {
+              if (!node.isMesh) return;
+              [].concat(node.material).forEach((mat) => {
+                if (!mat) return;
+                ['map', 'normalMap', 'roughnessMap', 'metalnessMap', 'emissiveMap'].forEach((slot) => {
+                  const tex = mat[slot];
+                  if (!tex) return;
+                  tex.magFilter  = THREE.LinearFilter;
+                  tex.minFilter  = THREE.LinearMipmapLinearFilter;
+                  tex.anisotropy = maxAnisotropy;
+                  tex.needsUpdate = true;
+                });
+              });
+            });
             this.group.add(gltf.scene);
             this.pending--;
           },
@@ -400,7 +427,7 @@ class SimpleTilesRenderer {
     }
 
     // Recurse into children.
-    if (tile.children && depth < 2) {
+    if (tile.children && depth < maxDepth) {
       tile.children.forEach((child) =>
         this._processTile(child, baseUrl, matrix, depth + 1)
       );
@@ -602,7 +629,7 @@ function initScene(canvas, width, height, apiKey) {
     premultipliedAlpha: false,
   });
   renderer.setSize(width, height, false); // false = skip CSS update (OffscreenCanvas)
-  renderer.setPixelRatio(1);              // fixed at 1 for Chromebook perf
+  renderer.setPixelRatio(self.devicePixelRatio || 1); // match device DPR for full-resolution rendering
   renderer.localClippingEnabled = true;
   renderer.setClearColor(0x000000, 0);    // fully transparent clear
 
