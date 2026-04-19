@@ -168,13 +168,13 @@ export function SearchBar({ onSelect }: Props) {
   }
 
   function handleKeyDown(e: React.KeyboardEvent<HTMLInputElement>) {
-    if (!open) return;
+    if (!open || results.length === 0) return;
     if (e.key === 'ArrowDown') {
       e.preventDefault();
       setHighlighted((h) => Math.min(h + 1, results.length - 1));
     } else if (e.key === 'ArrowUp') {
       e.preventDefault();
-      setHighlighted((h) => Math.max(h - 1, 0));
+      setHighlighted((h) => Math.max(h - 1, -1));
     } else if (e.key === 'Enter') {
       e.preventDefault();
       const idx = highlighted >= 0 ? highlighted : 0;
@@ -219,7 +219,12 @@ export function SearchBar({ onSelect }: Props) {
 
       {/* Results dropdown */}
       {open && results.length > 0 && (
-        <ul style={dropdown} role="listbox" aria-label="Search results">
+        <ul
+          style={dropdown}
+          role="listbox"
+          aria-label="Search results"
+          onMouseLeave={() => setHighlighted(-1)}
+        >
           {results.map((r, i) => (
             <li
               key={r.place_id}
@@ -230,7 +235,6 @@ export function SearchBar({ onSelect }: Props) {
               role="option"
               aria-selected={i === highlighted}
               onMouseEnter={() => setHighlighted(i)}
-              onMouseLeave={() => setHighlighted(-1)}
               onClick={() => handleSelect(r)}
             >
               <span style={resultName}>{shortName(r.display_name)}</span>
