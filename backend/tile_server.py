@@ -49,10 +49,10 @@ app.mount("/compositing", compositing_app)
 # ---------------------------------------------------------------------------
 
 GIBS_LAYER = "BlueMarble_NextGeneration"
-# EPSG:4326 "250m" TileMatrixSet — matches the GeographicTilingScheme used
-# by the globe.html frontend.  The old GoogleMapsCompatible_Level8 matrix
-# set (epsg3857) is not available for this layer.
-GIBS_MATRIX_SET = "250m"
+# EPSG:4326 "500m" TileMatrixSet — BlueMarble_NextGeneration is available
+# at 500 m/pixel resolution.  Both the backend proxy and the direct
+# globe.html fallback use this matrix set.
+GIBS_MATRIX_SET = "500m"
 GIBS_FORMAT = "image/jpeg"
 
 

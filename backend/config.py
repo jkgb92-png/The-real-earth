@@ -17,8 +17,9 @@ class Settings(BaseSettings):
     tile_store_path: str = "tiles"
 
     # NASA GIBS
-    # BlueMarble_NextGeneration is only available in EPSG:4326; the epsg3857
-    # endpoint returns 400 for this layer.
+    # BlueMarble_NextGeneration is only available in EPSG:4326 (the epsg3857
+    # endpoint returns 400 for this layer).  The correct TileMatrixSet for
+    # this layer is "500m" (500 m/pixel native resolution, max level 8).
     gibs_base_url: str = "https://gibs.earthdata.nasa.gov/wmts/epsg4326/best"
 
     # SAR model
