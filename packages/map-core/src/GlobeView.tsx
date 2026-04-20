@@ -47,6 +47,20 @@ function buildGlobeHtml(tileServerUrl: string, cesiumIonToken: string, shader: s
   const safeToken = escapeHtmlAttr(cesiumIonToken);
   // The shader is a compile-time constant; escape backticks/$ for template literal safety
   const safeShader = shader.replace(/\\/g, '\\\\').replace(/`/g, '\\`').replace(/\$/g, '\\$');
+
+  // BlueMarble_NextGeneration is only available via GIBS EPSG:4326 — the
+  // epsg3857 endpoint returns 400 for this layer.  Both the proxy path and the
+  // direct fallback therefore use EPSG:4326 coordinates via Cesium's
+  // GeographicTilingScheme.  WMTS TileRow 0 is the northernmost row, which
+  // matches Cesium's {y} template variable (y=0 at top); {reverseY} would flip
+  // tiles north/south.
+  const GIBS_EPSG4326_BASE = 'https://gibs.earthdata.nasa.gov/wmts/epsg4326/best';
+  const TILE_SERVER_DEFAULT = 'http://localhost:8000';
+  const useProxy = tileServerUrl !== '' && tileServerUrl !== TILE_SERVER_DEFAULT;
+  const gibsUrl = useProxy
+    ? `${safeTileServer}/tiles/gibs/{z}/{x}/{y}.jpg`
+    : `${GIBS_EPSG4326_BASE}/BlueMarble_NextGeneration/default/2004-08-01/250m/{z}/{y}/{x}.jpg`;
+
   return /* html */ `<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -56,7 +70,7 @@ function buildGlobeHtml(tileServerUrl: string, cesiumIonToken: string, shader: s
   <script src="https://cesium.com/downloads/cesiumjs/releases/1.117/Build/Cesium/Cesium.js"></script>
   <link href="https://cesium.com/downloads/cesiumjs/releases/1.117/Build/Cesium/Widgets/widgets.css" rel="stylesheet" />
   <style>
-    html, body, #cesiumContainer { width: 100%; height: 100%; margin: 0; padding: 0; overflow: hidden; }
+    html, body, #cesiumContainer { width: 100%; height: 100%; margin: 0; padding: 0; overflow: hidden; background: #0a0a1a; }
   </style>
 </head>
 <body>
@@ -76,23 +90,28 @@ function buildGlobeHtml(tileServerUrl: string, cesiumIonToken: string, shader: s
       creditContainer: document.createElement('div'), // hide credit overlay
     });
 
-    // Base layer: NASA GIBS Blue Marble via our tile server proxy
+    // Base layer: NASA GIBS Blue Marble (EPSG:4326 / GeographicTilingScheme).
+    // Tile size is 512×512 px; maximumLevel 8 matches GIBS 250 m resolution.
+    // Uses {y} (WMTS row 0 = north), not {reverseY} (TMS row 0 = south).
     viewer.imageryLayers.addImageryProvider(
       new Cesium.UrlTemplateImageryProvider({
-        url: '${safeTileServer}/tiles/gibs/{z}/{x}/{reverseY}.jpg',
+        url: '${gibsUrl}',
+        tilingScheme: new Cesium.GeographicTilingScheme(),
+        tileWidth: 512,
+        tileHeight: 512,
         maximumLevel: 8,
-        credit: 'NASA GIBS',
+        credit: 'NASA GIBS / Blue Marble',
       })
     );
 
-    // ESRI World Imagery — high-resolution gap-fill above z=8.
-    // maximumLevel capped at 17: above this level ESRI 404s in open ocean and
-    // sparse areas; Cesium will overzoom the z=17 tile (keeping it visible)
-    // instead of showing a blank/missing-tile placeholder.
+    // ESRI World Imagery — high-resolution gap-fill at all zoom levels.
+    // No minimumLevel: ESRI has global coverage from z=0, so it renders on top
+    // of GIBS at all zooms and provides full detail above z=8 where GIBS stops.
+    // maximumLevel capped at 17: above this ESRI 404s in sparse areas; Cesium
+    // will overzoom the z=17 tile instead of showing a missing-tile placeholder.
     viewer.imageryLayers.addImageryProvider(
       new Cesium.UrlTemplateImageryProvider({
         url: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
-        minimumLevel: 8,
         maximumLevel: 17,
         credit: 'Esri World Imagery',
       })
@@ -113,9 +132,13 @@ function buildGlobeHtml(tileServerUrl: string, cesiumIonToken: string, shader: s
 
     // Enable atmosphere and lighting
     viewer.scene.globe.enableLighting = true;
+    viewer.scene.globe.baseColor = Cesium.Color.fromCssColorString('#050814');
     viewer.scene.skyAtmosphere.show = true;
     // Request tiles at 1:1 screen pixels — eliminates blurry upscaling.
     viewer.scene.globe.maximumScreenSpaceError = 1;
+    // Render at native device pixel ratio for crisp imagery on Retina/HiDPI
+    // screens.  Cap at 2× to avoid excessive GPU overhead on very high-DPI devices.
+    viewer.resolutionScale = Math.min(window.devicePixelRatio || 1, 2);
   </script>
 </body>
 </html>`;
