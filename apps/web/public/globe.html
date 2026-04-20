@@ -45,18 +45,19 @@
     const tileServer = params.get('tileServer') || 'http://localhost:8000';
     const cesiumToken = params.get('cesiumToken') || '';
 
-    // When the tile server is not available (e.g. GitHub Pages static
-    // deployment) fall back to fetching GIBS Blue Marble tiles directly.
-    const GIBS_DIRECT =
-      'https://gibs.earthdata.nasa.gov/wmts/epsg3857/best' +
-      '/BlueMarble_NextGeneration/default/2004-08-01' +
-      '/GoogleMapsCompatible_Level8/{z}/{reverseY}/{x}.jpg';
+    // BlueMarble_NextGeneration is only available from GIBS in EPSG:4326
+    // (the epsg3857 endpoint returns 400 for this layer).  Both the
+    // tile-server proxy path and the direct fallback therefore use EPSG:4326
+    // coordinates via Cesium's GeographicTilingScheme.
+    // WMTS TileRow 0 is the northernmost row, which matches Cesium's {y}
+    // template variable (y=0 at top); {reverseY} would flip tiles north/south.
+    const GIBS_EPSG4326_BASE = 'https://gibs.earthdata.nasa.gov/wmts/epsg4326/best';
 
     const TILE_SERVER_DEFAULT = 'http://localhost:8000';
-    const gibsUrl =
-      tileServer && tileServer !== TILE_SERVER_DEFAULT
-        ? `${tileServer}/tiles/gibs/{z}/{x}/{reverseY}.jpg`
-        : GIBS_DIRECT;
+    const useProxy = tileServer && tileServer !== TILE_SERVER_DEFAULT;
+    const gibsBlueMarbleUrl = useProxy
+      ? `${tileServer}/tiles/gibs/{z}/{x}/{y}.jpg`
+      : `${GIBS_EPSG4326_BASE}/BlueMarble_NextGeneration/default/2004-08-01/250m/{z}/{y}/{x}.jpg`;
 
     if (cesiumToken) Cesium.Ion.defaultAccessToken = cesiumToken;
 
@@ -75,10 +76,14 @@
     });
 
     // ── Phase 4.1: NASA GIBS Blue Marble base + Black Marble city lights ────
-    // Blue Marble (day) — use direct GIBS URL when no tile server is available
+    // Blue Marble (day) — EPSG:4326 tiles with geographic tiling scheme.
+    // Tile size is 512×512 px; maximumLevel 8 matches GIBS 250 m resolution.
     viewer.imageryLayers.addImageryProvider(
       new Cesium.UrlTemplateImageryProvider({
-        url: gibsUrl,
+        url: gibsBlueMarbleUrl,
+        tilingScheme: new Cesium.GeographicTilingScheme(),
+        tileWidth: 512,
+        tileHeight: 512,
         maximumLevel: 8,
         credit: 'NASA GIBS / Blue Marble',
       })
@@ -95,9 +100,13 @@
       })
     );
 
-    // Black Marble (city lights) — second layer, visible on night side
+    // Black Marble (city lights) — second layer, visible on night side.
+    // Also uses GIBS EPSG:4326 (same GeographicTilingScheme as Blue Marble).
     const blackMarbleProvider = new Cesium.UrlTemplateImageryProvider({
-      url: 'https://gibs.earthdata.nasa.gov/wmts/epsg3857/best/VIIRS_Black_Marble/default/2016-01-01/GoogleMapsCompatible_Level8/{z}/{reverseY}/{x}.jpg',
+      url: `${GIBS_EPSG4326_BASE}/VIIRS_Black_Marble/default/2016-01-01/250m/{z}/{y}/{x}.jpg`,
+      tilingScheme: new Cesium.GeographicTilingScheme(),
+      tileWidth: 512,
+      tileHeight: 512,
       maximumLevel: 8,
       credit: 'NASA GIBS / Black Marble',
     });

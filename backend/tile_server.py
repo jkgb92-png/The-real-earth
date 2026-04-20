@@ -49,7 +49,10 @@ app.mount("/compositing", compositing_app)
 # ---------------------------------------------------------------------------
 
 GIBS_LAYER = "BlueMarble_NextGeneration"
-GIBS_MATRIX_SET = "GoogleMapsCompatible_Level8"
+# EPSG:4326 "250m" TileMatrixSet — matches the GeographicTilingScheme used
+# by the globe.html frontend.  The old GoogleMapsCompatible_Level8 matrix
+# set (epsg3857) is not available for this layer.
+GIBS_MATRIX_SET = "250m"
 GIBS_FORMAT = "image/jpeg"
 
 
@@ -60,10 +63,11 @@ GIBS_FORMAT = "image/jpeg"
 )
 async def gibs_tile(z: int, x: int, y: int) -> Response:
     """
-    Proxies a WMTS tile from NASA GIBS.
+    Proxies a WMTS tile from NASA GIBS (EPSG:4326 / GeographicTilingScheme).
 
-    GIBS uses the standard XYZ / GoogleMapsCompatible tile grid.
-    Maximum native zoom for Blue Marble NextGeneration is z=8.
+    BlueMarble_NextGeneration is only available in EPSG:4326; the client
+    (globe.html) therefore uses Cesium's GeographicTilingScheme and sends
+    EPSG:4326 tile coordinates.  Maximum native zoom is z=8.
     """
     url = (
         f"{settings.gibs_base_url}/{GIBS_LAYER}/default/2004-08-01"

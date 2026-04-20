@@ -17,7 +17,9 @@ class Settings(BaseSettings):
     tile_store_path: str = "tiles"
 
     # NASA GIBS
-    gibs_base_url: str = "https://gibs.earthdata.nasa.gov/wmts/epsg3857/best"
+    # BlueMarble_NextGeneration is only available in EPSG:4326; the epsg3857
+    # endpoint returns 400 for this layer.
+    gibs_base_url: str = "https://gibs.earthdata.nasa.gov/wmts/epsg4326/best"
 
     # SAR model
     sar_model_path: str = "sar_reconstruct/model.pt"
