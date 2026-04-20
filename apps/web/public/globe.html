@@ -172,6 +172,10 @@
     // Request tiles at 1:1 screen pixels — eliminates blurry upscaling.
     // Default is 2 (half-resolution); 1 forces native-resolution tile selection.
     viewer.scene.globe.maximumScreenSpaceError = 1;
+    // Render at native device pixel ratio for crisp imagery on Retina/HiDPI
+    // screens.  Cap at 2× to avoid excessive GPU overhead on very high-DPI
+    // devices (3×, 4×) where the incremental sharpness gain is imperceptible.
+    viewer.resolutionScale = Math.min(window.devicePixelRatio || 1, 2);
 
     // ── Phase 4.2: ISS orbit shell (translucent ellipsoid at ~420 km) ───────
     const EARTH_RADIUS_M = 6_371_000;
