@@ -109,7 +109,8 @@ function resultZoom(result: NominatimResult): number {
   if (['county', 'district', 'municipality'].includes(t)) return 8;
   if (['city', 'town', 'village'].includes(t)) return 10;
   if (['suburb', 'neighbourhood', 'quarter'].includes(t)) return 13;
-  return 14; // street / address / POI
+  if (['house', 'house_number', 'road', 'street', 'residential', 'pedestrian', 'footway', 'path', 'postcode'].includes(t)) return 16;
+  return 14; // POI / amenity / default
 }
 
 /** Shorten a Nominatim display_name for readability */
@@ -142,6 +143,24 @@ function typeBadge(result: NominatimResult): string {
     natural: 'Natural',
     waterfall: 'Waterfall',
     canyon: 'Canyon',
+    // Address types
+    house: 'Address',
+    house_number: 'Address',
+    road: 'Street',
+    street: 'Street',
+    residential: 'Street',
+    pedestrian: 'Street',
+    footway: 'Street',
+    path: 'Street',
+    postcode: 'Postcode',
+    amenity: 'Amenity',
+    building: 'Building',
+    shop: 'Shop',
+    office: 'Office',
+    tourism: 'Tourism',
+    leisure: 'Leisure',
+    historic: 'Historic',
+    place: 'Place',
   };
   return map[t] ?? result.class ?? 'Place';
 }

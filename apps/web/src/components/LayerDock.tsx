@@ -26,6 +26,7 @@ export interface LayerState {
   ndvi: boolean;
   sar: boolean;
   swipe: boolean;
+  ir: boolean;
 }
 
 interface Props {
@@ -33,6 +34,8 @@ interface Props {
   layers: LayerState;
   onModeToggle: () => void;
   onLayerToggle: (key: keyof LayerState) => void;
+  irIntensity: number;
+  onIRIntensityChange: (v: number) => void;
 }
 
 const ITEMS: Array<{
@@ -51,9 +54,10 @@ const ITEMS: Array<{
   { key: 'bathymetry',   icon: '🌊', label: 'Bathymetry',            activeColor: '#22d3ee' },
   { key: 'borders',      icon: '🗺️', label: 'Borders',               activeColor: '#c084fc' },
   { key: 'labels',       icon: '🔤', label: 'Country Names',         activeColor: '#fb923c' },
+  { key: 'ir',           icon: '🌡️', label: 'Infrared (IR)',         activeColor: '#ff6b35' },
 ];
 
-export function LayerDock({ mode, layers, onModeToggle, onLayerToggle }: Props) {
+export function LayerDock({ mode, layers, onModeToggle, onLayerToggle, irIntensity, onIRIntensityChange }: Props) {
   const [expanded, setExpanded] = useState(false);
 
   return (
@@ -88,20 +92,37 @@ export function LayerDock({ mode, layers, onModeToggle, onLayerToggle }: Props) 
         ITEMS.map(({ key, icon, label, activeColor }, i) => {
           const isActive = key === 'globe' ? false : layers[key as keyof LayerState];
           return (
-            <button
-              key={key}
-              style={{
-                ...dockItem,
-                ...(isActive ? dockItemActive(activeColor) : {}),
-                animation: `dockItemIn 0.25s ease-out ${i * 50}ms both`,
-              }}
-              onClick={() => onLayerToggle(key as keyof LayerState)}
-              title={label}
-              type="button"
-            >
-              <span style={dockIcon}>{icon}</span>
-              {isActive && <span style={{ ...activeDot, color: activeColor }} />}
-            </button>
+            <React.Fragment key={key}>
+              <button
+                style={{
+                  ...dockItem,
+                  ...(isActive ? dockItemActive(activeColor) : {}),
+                  animation: `dockItemIn 0.25s ease-out ${i * 50}ms both`,
+                }}
+                onClick={() => onLayerToggle(key as keyof LayerState)}
+                title={label}
+                type="button"
+              >
+                <span style={dockIcon}>{icon}</span>
+                {isActive && <span style={{ ...activeDot, color: activeColor }} />}
+              </button>
+              {/* IR intensity slider — shown inline when IR layer is active */}
+              {key === 'ir' && isActive && (
+                <div style={irSliderWrapper} title="IR Intensity">
+                  <input
+                    type="range"
+                    min={0}
+                    max={1}
+                    step={0.05}
+                    value={irIntensity}
+                    onChange={(e) => onIRIntensityChange(parseFloat(e.target.value))}
+                    style={irSlider}
+                    aria-label="IR intensity"
+                  />
+                  <span style={irSliderLabel}>{Math.round(irIntensity * 100)}%</span>
+                </div>
+              )}
+            </React.Fragment>
           );
         })}
     </div>
@@ -187,6 +208,34 @@ function hexToRgbStr(hex: string): string {
     '#22d3ee': '34,211,238',
     '#c084fc': '192,132,252',
     '#fb923c': '251,146,60',
+    '#ff6b35': '255,107,53',
   };
   return map[hex] ?? '80,160,255';
 }
+
+const irSliderWrapper: React.CSSProperties = {
+  display: 'flex',
+  flexDirection: 'column',
+  alignItems: 'center',
+  gap: 2,
+  width: 44,
+  padding: '4px 0',
+};
+
+const irSlider: React.CSSProperties = {
+  width: 36,
+  accentColor: '#ff6b35',
+  cursor: 'pointer',
+  writingMode: 'vertical-lr' as const,
+  direction: 'rtl' as const,
+  height: 60,
+  appearance: 'slider-vertical' as never,
+  WebkitAppearance: 'slider-vertical' as never,
+};
+
+const irSliderLabel: React.CSSProperties = {
+  fontSize: '0.5rem',
+  color: 'rgba(255,107,53,0.9)',
+  fontFamily: 'ui-monospace, monospace',
+  letterSpacing: '0.04em',
+};
