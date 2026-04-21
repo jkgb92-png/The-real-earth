@@ -290,7 +290,9 @@ export function EarthWebMap() {
     ndvi: false,
     sar: false,
     swipe: false,
+    ir: false,
   });
+  const [irIntensity, setIRIntensity] = useState(0.6);
   // Active base layer for the LayerSwitcher (rgb / ndvi / sar)
   const [activeBaseLayer, setActiveBaseLayer] = useState<BaseLayerId>('rgb');
   const [cursorLat, setCursorLat] = useState(20);
@@ -307,6 +309,24 @@ export function EarthWebMap() {
     scanner:    false,
     livePulse:  false,
   });
+
+  // ── Current user location (geolocation) ──────────────────────────────────
+  const [userLocation, setUserLocation] = useState<{ lat: number; lon: number } | null>(null);
+  const [locating, setLocating] = useState(false);
+
+  function handleLocateMe() {
+    if (!navigator.geolocation) return;
+    setLocating(true);
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        const { latitude: lat, longitude: lon } = pos.coords;
+        setUserLocation({ lat, lon });
+        setLocating(false);
+        mapRef.current?.flyTo({ center: [lon, lat], zoom: 14, duration: 1500 });
+      },
+      () => { setLocating(false); },
+    );
+  }
 
   const handleSpecOpsChange = useCallback((feature: SpecOpsFeature, enabled: boolean) => {
     setSpecOpsActive((prev: { subsurface: boolean; heroAsset: boolean; scanner: boolean; livePulse: boolean }) => ({
@@ -512,6 +532,8 @@ export function EarthWebMap() {
           <GlobeIframe
             tileServerUrl={TILE_SERVER_URL}
             onSpecOpsChange={handleSpecOpsChange}
+            irEnabled={layers.ir}
+            irIntensity={irIntensity}
           />
         )}
         <LayerDock
@@ -519,6 +541,8 @@ export function EarthWebMap() {
           layers={layers}
           onModeToggle={toggleMode}
           onLayerToggle={toggleLayer}
+          irIntensity={irIntensity}
+          onIRIntensityChange={setIRIntensity}
         />
       </div>
     );
@@ -715,6 +739,24 @@ export function EarthWebMap() {
           </Source>
         )}
 
+        {/* IR: MODIS Terra Land Surface Temperature overlay (adjustable opacity) */}
+        {layers.ir && (
+          <Source
+            id="ir-lst"
+            type="raster"
+            tiles={['https://gibs.earthdata.nasa.gov/wmts/epsg3857/best/MODIS_Terra_Land_Surface_Temp_Day/default/2023-07-01/GoogleMapsCompatible_Level7/{z}/{y}/{x}.png']}
+            tileSize={256}
+            maxzoom={7}
+          >
+            <Layer
+              id="ir-lst-layer"
+              type="raster"
+              source="ir-lst"
+              paint={{ 'raster-opacity': irIntensity, 'raster-fade-duration': 0 }}
+            />
+          </Source>
+        )}
+
         {/* Day/Night terminator */}
         {layers.terminator && (
           <Source id="terminator" type="geojson" data={termGeoJSON}>
@@ -738,6 +780,21 @@ export function EarthWebMap() {
 
         {/* ISS live position marker */}
         <ISSMarker enabled={layers.iss} />
+
+        {/* User current-location marker */}
+        {userLocation && (
+          <Marker longitude={userLocation.lon} latitude={userLocation.lat} anchor="center">
+            <div style={{ pointerEvents: 'none' }} aria-label="Your location">
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
+                <circle cx="12" cy="12" r="10" fill="rgba(60,130,255,0.18)" stroke="rgba(60,130,255,0.6)" strokeWidth="1.5">
+                  <animate attributeName="r" from="6" to="11" dur="1.6s" repeatCount="indefinite" />
+                  <animate attributeName="opacity" from="0.7" to="0" dur="1.6s" repeatCount="indefinite" />
+                </circle>
+                <circle cx="12" cy="12" r="5" fill="#3c82ff" stroke="white" strokeWidth="2" />
+              </svg>
+            </div>
+          </Marker>
+        )}
 
         {/* Saved view pin markers */}
         {savedLocations.map((loc) => (
@@ -807,7 +864,39 @@ export function EarthWebMap() {
         layers={layers}
         onModeToggle={toggleMode}
         onLayerToggle={toggleLayer}
+        irIntensity={irIntensity}
+        onIRIntensityChange={setIRIntensity}
       />
+
+      {/* My Location button */}
+      <button
+        style={{
+          position: 'absolute',
+          bottom: 40,
+          left: 76,
+          width: 44,
+          height: 44,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          background: 'rgba(8,12,30,0.82)',
+          backdropFilter: 'blur(10px)',
+          WebkitBackdropFilter: 'blur(10px)',
+          border: userLocation ? '1px solid #3c82ff' : '1px solid rgba(80,160,255,0.18)',
+          borderRadius: 10,
+          cursor: locating ? 'wait' : 'pointer',
+          zIndex: 10,
+          fontSize: '1.2rem',
+          animation: 'slideInLeft 0.5s cubic-bezier(0.22,1,0.36,1) 1.3s both',
+          boxShadow: userLocation ? '0 0 12px 2px rgba(60,130,255,0.3)' : 'none',
+        }}
+        onClick={handleLocateMe}
+        title="My Location"
+        type="button"
+        aria-label="My Location"
+      >
+        {locating ? '⏳' : '📍'}
+      </button>
 
       {/* Saved views panel */}
       <SavedLocationsPanel

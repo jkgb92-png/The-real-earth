@@ -75,6 +75,27 @@
       creditContainer: creditDiv,
     });
 
+    // ── IR: MODIS Terra Land Surface Temperature overlay ────────────────────
+    // Added with alpha=0 initially; toggled and intensity-controlled via
+    // postMessage from GlobeIframe.tsx (type: 'irLayer').
+    const irProvider = new Cesium.UrlTemplateImageryProvider({
+      url: 'https://gibs.earthdata.nasa.gov/wmts/epsg4326/best/MODIS_Terra_Land_Surface_Temp_Day/default/2023-07-01/1km/{z}/{y}/{x}.png',
+      tilingScheme: new Cesium.GeographicTilingScheme(),
+      tileWidth: 256,
+      tileHeight: 256,
+      maximumLevel: 7,
+      credit: 'NASA GIBS / MODIS LST',
+    });
+    const irLayer = viewer.imageryLayers.addImageryProvider(irProvider);
+    irLayer.alpha = 0.0;
+
+    // Handle IR layer messages from the React parent (GlobeIframe.tsx)
+    window.addEventListener('message', (e) => {
+      if (!e.data || e.data.type !== 'irLayer') return;
+      const { enabled, intensity } = e.data;
+      irLayer.alpha = enabled ? Math.max(0, Math.min(1, intensity ?? 0.6)) : 0.0;
+    });
+
     // ── Phase 4.1: NASA GIBS Blue Marble base + Black Marble city lights ────
     // Blue Marble (day) — EPSG:4326 tiles with geographic tiling scheme.
     // Tile size is 512×512 px; maximumLevel 8 matches GIBS 250 m resolution.
