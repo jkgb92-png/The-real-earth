@@ -54,20 +54,15 @@ const TILE_SERVER_URL =
   process.env.NEXT_PUBLIC_TILE_SERVER_URL ?? DEFAULT_TILE_SERVER_URL;
 const OWM_KEY = process.env.NEXT_PUBLIC_OWM_KEY ?? '';
 
-// When the tile server is not available (e.g. GitHub Pages static deployment),
-// fetch Blue Marble tiles directly from NASA GIBS instead of through the proxy.
-// GIBS WMTS uses {TileMatrix}/{TileRow}/{TileCol} = {z}/{y}/{x} in XYZ terms.
-const GIBS_DIRECT_URL =
-  'https://gibs.earthdata.nasa.gov/wmts/epsg3857/best' +
-  '/BlueMarble_NextGeneration/default/2004-08-01' +
-  '/GoogleMapsCompatible_Level8/{z}/{y}/{x}.jpg';
-
 const TILE_SERVER_AVAILABLE =
   TILE_SERVER_URL !== '' && TILE_SERVER_URL !== DEFAULT_TILE_SERVER_URL;
 
-const gibsTileUrl = TILE_SERVER_AVAILABLE
-  ? `${TILE_SERVER_URL}/tiles/gibs/{z}/{x}/{y}.jpg`
-  : GIBS_DIRECT_URL;
+// BlueMarble_NextGeneration is only available from GIBS in EPSG:4326; the
+// epsg3857 endpoint returns 400 for this layer.  Only use the GIBS proxy when
+// the tile server is available (the backend re-requests using epsg4326/500m).
+// When the tile server is absent (static/GitHub Pages deployments) the ESRI
+// World Imagery layer covers minzoom=0 and serves as the full base layer.
+const gibsTileUrl = `${TILE_SERVER_URL}/tiles/gibs/{z}/{x}/{y}.jpg`;
 
 const sentinelTileUrl = `${TILE_SERVER_URL}/tiles/sentinel/{z}/{x}/{y}`;
 const ndviTileUrl = `${TILE_SERVER_URL}/tiles/ndvi/{z}/{x}/{y}`;
@@ -442,7 +437,7 @@ export function EarthWebMap() {
    * is correct regardless of path order.
    */
   const prefetchTemplates = [
-    gibsTileUrl,
+    ...(TILE_SERVER_AVAILABLE ? [gibsTileUrl] : []),
     ESRI_WORLD_IMAGERY_URL,
     ...(layers.sentinel && TILE_SERVER_AVAILABLE ? [sentinelTileUrl] : []),
     ...(layers.ndvi && TILE_SERVER_AVAILABLE ? [ndviTileUrl] : []),
@@ -613,16 +608,23 @@ export function EarthWebMap() {
          */
         pixelRatio={dpr}
       >
-        {/* Base layer: NASA GIBS Blue Marble (direct or proxied) */}
-        <Source
-          id="gibs"
-          type="raster"
-          tiles={[gibsTileUrl]}
-          tileSize={retinaTileSize}
-          maxzoom={8}
-        >
-          <Layer {...gibsLayer} />
-        </Source>
+        {/* Base layer: NASA GIBS Blue Marble (proxied via tile server only).
+            BlueMarble_NextGeneration is only available from GIBS in EPSG:4326;
+            the epsg3857 endpoint returns 400 for this layer.  When the tile
+            server is absent (static/GitHub Pages deployments) the ESRI World
+            Imagery layer below starts at minzoom=0 and acts as the full base,
+            so we skip this source entirely to avoid the 400 console errors. */}
+        {TILE_SERVER_AVAILABLE && (
+          <Source
+            id="gibs"
+            type="raster"
+            tiles={[gibsTileUrl]}
+            tileSize={retinaTileSize}
+            maxzoom={8}
+          >
+            <Layer {...gibsLayer} />
+          </Source>
+        )}
 
         {/* High-res gap-fill: ESRI World Imagery (z ≥ 2).
             Always active so that areas without Sentinel-2 coverage (e.g.
