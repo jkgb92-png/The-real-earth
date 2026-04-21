@@ -27,6 +27,7 @@ export interface LayerState {
   sar: boolean;
   swipe: boolean;
   ir: boolean;
+  terrain: boolean;
 }
 
 interface Props {
@@ -55,6 +56,7 @@ const ITEMS: Array<{
   { key: 'borders',      icon: '🗺️', label: 'Borders',               activeColor: '#c084fc' },
   { key: 'labels',       icon: '🔤', label: 'Country Names',         activeColor: '#fb923c' },
   { key: 'ir',           icon: '🌡️', label: 'Infrared (IR)',         activeColor: '#ff6b35' },
+  { key: 'terrain',      icon: '⛰️', label: 'Mountain View',         activeColor: '#a3855a' },
 ];
 
 export function LayerDock({ mode, layers, onModeToggle, onLayerToggle, irIntensity, onIRIntensityChange }: Props) {
@@ -209,6 +211,7 @@ function hexToRgbStr(hex: string): string {
     '#c084fc': '192,132,252',
     '#fb923c': '251,146,60',
     '#ff6b35': '255,107,53',
+    '#a3855a': '163,133,90',
   };
   return map[hex] ?? '80,160,255';
 }

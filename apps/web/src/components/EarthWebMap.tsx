@@ -93,6 +93,27 @@ const ESRI_OCEAN_BASEMAP_URL =
 const CARTO_LABELS_URL =
   'https://basemaps.cartocdn.com/dark_only_labels/{z}/{x}/{y}.png';
 
+// ESRI World Hillshade — free, no auth required, global coverage z=0–18.
+// Semi-transparent terrain overlay that reveals mountains, hills, and natural
+// land formations via greyscale shaded relief derived from SRTM/NED elevation.
+const ESRI_HILLSHADE_URL =
+  'https://server.arcgisonline.com/ArcGIS/rest/services/Elevation/World_Hillshade/MapServer/tile/{z}/{y}/{x}';
+
+/**
+ * Returns an ISO-8601 date string (YYYY-MM-DD) for a date `offsetDays` before
+ * today in UTC.  Used to request a recent MODIS Terra LST composite: MODIS
+ * Terra products have an approximate 1–2 day processing latency, so we default
+ * to today − 2 days to ensure the tile is available on NASA GIBS.
+ */
+function getRecentMODISDate(offsetDays = 2): string {
+  const d = new Date();
+  d.setUTCDate(d.getUTCDate() - offsetDays);
+  return d.toISOString().slice(0, 10);
+}
+
+// Computed once at module load; stable across SSR and client.
+const MODIS_LST_DATE = getRecentMODISDate();
+
 // Natural Earth 110m country borders (simplified GeoJSON, ~325 KB).
 // Fetched lazily the first time the Borders layer is enabled.
 const NATURAL_EARTH_BORDERS_URL =
@@ -201,6 +222,20 @@ const labelsLayer: RasterLayerSpecification = {
   paint: { 'raster-opacity': 1, 'raster-fade-duration': 0 },
 };
 
+// Terrain hillshade: ESRI World Hillshade greyscale relief rendered as a
+// semi-transparent multiply-blended overlay so mountains, hills and natural
+// land formations are visible on top of any base imagery.
+const terrainLayer: RasterLayerSpecification = {
+  id: 'terrain-layer',
+  type: 'raster',
+  source: 'terrain',
+  paint: {
+    'raster-opacity': 0.45,
+    'raster-resampling': 'linear',
+    'raster-fade-duration': 0,
+  },
+};
+
 // ── Day/Night terminator geometry ─────────────────────────────────────────────
 
 /**
@@ -286,6 +321,7 @@ export function EarthWebMap() {
     sar: false,
     swipe: false,
     ir: false,
+    terrain: false,
   });
   const [irIntensity, setIRIntensity] = useState(0.6);
   // Active base layer for the LayerSwitcher (rgb / ndvi / sar)
@@ -443,6 +479,7 @@ export function EarthWebMap() {
     ...(layers.ndvi && TILE_SERVER_AVAILABLE ? [ndviTileUrl] : []),
     ...(layers.sar && TILE_SERVER_AVAILABLE ? [sarTileUrl] : []),
     ...(layers.bathymetry ? [ESRI_OCEAN_BASEMAP_URL] : []),
+    ...(layers.terrain ? [ESRI_HILLSHADE_URL] : []),
   ];
 
   const prefetch = useTilePrefetch(prefetchTemplates, 24, workerCache);
@@ -553,6 +590,7 @@ export function EarthWebMap() {
     bathymetry: layers.bathymetry,
     borders: layers.borders,
     labels: layers.labels,
+    terrain: layers.terrain,
   };
 
   /**
@@ -741,12 +779,14 @@ export function EarthWebMap() {
           </Source>
         )}
 
-        {/* IR: MODIS Terra Land Surface Temperature overlay (adjustable opacity) */}
+        {/* IR: MODIS Terra Land Surface Temperature overlay (adjustable opacity).
+            Uses a dynamic date (today − 2 days) so the displayed LST composite
+            is always recent rather than a fixed historical snapshot. */}
         {layers.ir && (
           <Source
             id="ir-lst"
             type="raster"
-            tiles={['https://gibs.earthdata.nasa.gov/wmts/epsg3857/best/MODIS_Terra_Land_Surface_Temp_Day/default/2023-07-01/GoogleMapsCompatible_Level7/{z}/{y}/{x}.png']}
+            tiles={[`https://gibs.earthdata.nasa.gov/wmts/epsg3857/best/MODIS_Terra_Land_Surface_Temp_Day/default/${MODIS_LST_DATE}/GoogleMapsCompatible_Level7/{z}/{y}/{x}.png`]}
             tileSize={256}
             maxzoom={7}
           >
@@ -756,6 +796,21 @@ export function EarthWebMap() {
               source="ir-lst"
               paint={{ 'raster-opacity': irIntensity, 'raster-fade-duration': 0 }}
             />
+          </Source>
+        )}
+
+        {/* Terrain hillshade: ESRI World Hillshade (mountains, hills and
+            natural formations).  Rendered as a semi-transparent overlay so
+            topographic relief is visible on top of any base imagery. */}
+        {layers.terrain && (
+          <Source
+            id="terrain"
+            type="raster"
+            tiles={[ESRI_HILLSHADE_URL]}
+            tileSize={retinaTileSize}
+            maxzoom={18}
+          >
+            <Layer {...terrainLayer} />
           </Source>
         )}
 
