@@ -43,9 +43,12 @@ export function GlobeIframe({ tileServerUrl, onSpecOpsChange, irEnabled, irInten
   useEffect(() => {
     const win = iframeRef.current?.contentWindow;
     if (!win) return;
+    // Use the same-origin as the parent; globe.html is always served from the
+    // same host so this is safe and avoids the '*' wildcard security risk.
+    const targetOrigin = window.location.origin;
     win.postMessage(
       { type: 'irLayer', enabled: !!irEnabled, intensity: irIntensity ?? 0.6 },
-      '*',
+      targetOrigin,
     );
   }, [irEnabled, irIntensity]);
 
