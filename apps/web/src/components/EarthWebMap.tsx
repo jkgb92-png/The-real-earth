@@ -136,6 +136,12 @@ const esriLayer: RasterLayerSpecification = {
   // ESRI layer continues to provide a clean base image instead of showing
   // the empty dark background.
   minzoom: 0,
+  // No minzoom: ESRI World Imagery has global coverage from z=0, so it
+  // renders at every zoom level and fully replaces GIBS wherever ESRI has
+  // data.  Removing the previous minzoom=2 closes the z=0–1 coverage gap
+  // that appeared on static/GitHub Pages deployments when the GIBS direct
+  // URL was unavailable (BlueMarble_NextGeneration is only in EPSG:4326 but
+  // MapLibre needs EPSG:3857 tiles, so those requests 400).
   // fade-duration=0: tiles pop in instantly — eliminates the blurry upscaled
   // parent tile that was visible during the 300 ms cross-fade window, which
   // was particularly noticeable over featureless ocean areas.
