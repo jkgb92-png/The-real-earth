@@ -24,6 +24,7 @@ export interface ActiveLayers {
   bathymetry: boolean;
   borders: boolean;
   labels: boolean;
+  terrain: boolean;
 }
 
 export interface SpecOpsActiveState {
@@ -68,6 +69,7 @@ export function HUDPanel({ lat, lon, zoom, activeLayers, specOpsActive }: Props)
     { key: 'iss',         label: 'ISS Tracker',             icon: '🛰' },
     { key: 'borders',     label: 'Borders',                 icon: '🗺️' },
     { key: 'labels',      label: 'Country Names',           icon: '🔤' },
+    { key: 'terrain',     label: 'Mountain View',           icon: '⛰️' },
   ];
 
   return (
