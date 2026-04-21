@@ -130,6 +130,12 @@ const esriLayer: RasterLayerSpecification = {
   id: 'esri-layer',
   type: 'raster',
   source: 'esri',
+  // Start at z=0 so ESRI covers the full globe at every zoom level.
+  // The GIBS Blue Marble layer renders over this at low zoom when available,
+  // but if GIBS tiles fail (e.g. wrong tile matrix set, network error) the
+  // ESRI layer continues to provide a clean base image instead of showing
+  // the empty dark background.
+  minzoom: 0,
   // No minzoom: ESRI World Imagery has global coverage from z=0, so it
   // renders at every zoom level and fully replaces GIBS wherever ESRI has
   // data.  Removing the previous minzoom=2 closes the z=0–1 coverage gap
