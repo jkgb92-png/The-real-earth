@@ -12,7 +12,31 @@
  *  roadPulseFragShader   — Three.js ShaderMaterial fragment: animated dash pulse
  *  scannerVertShader     — EffectComposer ShaderPass vertex: full-screen quad UV
  *  scannerFragShader     — EffectComposer ShaderPass fragment: Sobel + Solar-Gold ring
+ *
+ * Tile texture quality
+ * --------------------
+ *  applyTileTextureQuality   — LinearFilter + max GPU anisotropy for tile textures
+ *
+ * Tile sharpening
+ * ---------------
+ *  tileSharpenVertGlsl       — ShaderMaterial vertex pass-through
+ *  tileSharpenFragGlsl       — ShaderMaterial fragment: unsharp-mask + S-curve contrast
+ *  patchMaterialSharpening   — onBeforeCompile injector for MeshStandardMaterial
+ *
+ * Bathymetry material
+ * -------------------
+ *  BATHYMETRY_MATERIAL       — Recommended roughness / metalness / envMapIntensity
+ *  applyBathymetryShading    — Sets PBR params + ridge-edge fragment injection
+ *
+ * Canvas DPR
+ * ----------
+ *  getCanvasDpr              — [min, max] DPR tuple for R3F <Canvas dpr> on HiDPI displays
  */
+
+export * from './tile_texture_quality';
+export * from './tile_sharpen';
+export * from './bathymetry_material';
+export * from './canvas_dpr';
 
 // Inline the GLSL at build time so consumers don't need a file-loader.
 // Enhanced with limb brightening and chromatic sunset dispersion.
