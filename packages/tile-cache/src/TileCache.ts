@@ -125,12 +125,16 @@ export class TileCache {
   /**
    * Prefetch a 3×3 grid of tiles surrounding (z, cx, cy) at zoom level z,
    * and also fetch the centre tile at zoom+1 for sharper detail.
+   * At z ≤ 4 (global / polar view) the grid expands to 5×5 so that Arctic
+   * and Antarctic tiles are warm before the user pans to the poles.
    * All fetches are fire-and-forget; errors are silently ignored.
    */
   prefetchAround(z: number, cx: number, cy: number): void {
     const tasks: Array<[number, number, number]> = [];
-    for (let dx = -1; dx <= 1; dx++) {
-      for (let dy = -1; dy <= 1; dy++) {
+    // Expand to ±2 tiles at very low zooms to cover polar gaps cheaply.
+    const radius = z <= 4 ? 2 : 1;
+    for (let dx = -radius; dx <= radius; dx++) {
+      for (let dy = -radius; dy <= radius; dy++) {
         tasks.push([z, cx + dx, cy + dy]);
       }
     }

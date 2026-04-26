@@ -24,28 +24,47 @@
 
 const CACHE_NAME = 'tile-prefetch-v1';
 
-self.onmessage = async (e: MessageEvent<{ url: string }>) => {
-  const { url } = e.data;
-  if (!url) return;
+type WorkerMessage =
+  | { type?: undefined; url: string }
+  | { type: 'prefetch'; url: string }
+  | { type: 'clearAll' };
 
-  try {
-    const cache = await caches.open(CACHE_NAME);
-    // If already cached, do nothing
-    const existing = await cache.match(url);
-    if (existing) return;
+self.onmessage = async (e: MessageEvent<WorkerMessage>) => {
+  const msg = e.data;
 
-    // Fetch with a tile-friendly Accept header
-    const resp = await fetch(url, {
-      headers: { Accept: 'image/webp,image/png,image/*' },
-      // Use only the network (bypass SW cache to avoid double-storing)
-      cache: 'no-cache',
-    });
+  // Legacy path: bare { url } message (no explicit type field)
+  if (!msg.type || msg.type === 'prefetch') {
+    const url = (msg as { url: string }).url;
+    if (!url) return;
 
-    if (!resp.ok) return;
+    try {
+      const cache = await caches.open(CACHE_NAME);
+      // If already cached, do nothing
+      const existing = await cache.match(url);
+      if (existing) return;
 
-    // Clone before consuming — put() reads the body stream
-    await cache.put(url, resp);
-  } catch {
-    // Silently discard network or cache errors
+      // Fetch with a tile-friendly Accept header
+      const resp = await fetch(url, {
+        headers: { Accept: 'image/webp,image/png,image/*' },
+        // Use only the network (bypass SW cache to avoid double-storing)
+        cache: 'no-cache',
+      });
+
+      if (!resp.ok) return;
+
+      // Clone before consuming — put() reads the body stream
+      await cache.put(url, resp);
+    } catch {
+      // Silently discard network or cache errors
+    }
+    return;
+  }
+
+  if (msg.type === 'clearAll') {
+    try {
+      await caches.delete(CACHE_NAME);
+    } catch {
+      // Silently discard errors
+    }
   }
 };

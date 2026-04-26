@@ -130,6 +130,18 @@ export class WorkerTileCache {
   }
 
   /**
+   * Delete all tiles stored in the Cache API by the background worker.
+   * Sends a `clearAll` message to the worker which deletes the entire
+   * cache store.  Also resets the in-memory `seen` set so subsequent
+   * prefetch calls re-populate the cache from scratch.
+   */
+  clearAll(): void {
+    this.seen.clear();
+    if (!this.worker) return;
+    this.worker.postMessage({ type: 'clearAll' });
+  }
+
+  /**
    * Terminate the background worker and release resources.
    * Call this when the component using the cache unmounts.
    */
