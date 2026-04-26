@@ -222,6 +222,10 @@ def synthesize_overzoom_tile(
             all_paths = [p for p in all_paths if p.name.startswith(year_prefix)]
         tile_paths_list = all_paths[:passes]
 
+        # Require at least 2 passes to produce a meaningful median composite;
+        # a single pass cannot suppress cloud artefacts.  NDVI synthesis uses
+        # a lower threshold of 1 because NDVI is computed per-pixel without
+        # cloud masking via temporal median.
         if len(tile_paths_list) < 2:
             continue
 

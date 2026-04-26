@@ -175,6 +175,9 @@ def synthesize_ndvi_overzoom_tile(
             continue
 
         tile_paths = sorted(parent_dir.glob("*.tif"))[:passes]
+        # One pass is sufficient for NDVI: the per-pixel formula does not
+        # depend on temporal median compositing (no cloud masking), unlike the
+        # RGB compositor which needs at least 2 passes to suppress artefacts.
         if len(tile_paths) < 1:
             continue
 
