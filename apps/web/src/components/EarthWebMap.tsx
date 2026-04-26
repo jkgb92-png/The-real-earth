@@ -99,6 +99,13 @@ const CARTO_LABELS_URL =
 const ESRI_HILLSHADE_URL =
   'https://server.arcgisonline.com/ArcGIS/rest/services/Elevation/World_Hillshade/MapServer/tile/{z}/{y}/{x}';
 
+// ── Terrain DEM source (open, no auth, Mapzen / AWS Terrain Tiles) ───────────
+// Used to enable MapLibre's 3D terrain extrusion when Mountain View is active.
+// The tileset uses the Terrarium encoding:
+//   elevation (m) = (R × 256 + G + B / 256) − 32768
+const TERRAIN_RGB_URL =
+  'https://s3.amazonaws.com/elevation-tiles-prod/terrarium/{z}/{x}/{y}.png';
+
 /**
  * Returns an ISO-8601 date string (YYYY-MM-DD) for a date `offsetDays` before
  * today in UTC.  Used to request a recent MODIS Terra LST composite: MODIS
@@ -225,14 +232,18 @@ const labelsLayer: RasterLayerSpecification = {
 // Terrain hillshade: ESRI World Hillshade greyscale relief rendered as a
 // semi-transparent multiply-blended overlay so mountains, hills and natural
 // land formations are visible on top of any base imagery.
+// Opacity boosted to 0.65 (from 0.45) and contrast raised to enhance ridge
+// sharpness; linear resampling smooths the greyscale gradient at high zoom.
 const terrainLayer: RasterLayerSpecification = {
   id: 'terrain-layer',
   type: 'raster',
   source: 'terrain',
   paint: {
-    'raster-opacity': 0.45,
+    'raster-opacity': 0.65,
     'raster-resampling': 'linear',
     'raster-fade-duration': 0,
+    'raster-contrast': 0.2,
+    'raster-brightness-min': 0.05,
   },
 };
 
@@ -322,6 +333,7 @@ export function EarthWebMap() {
     swipe: false,
     ir: false,
     terrain: false,
+    hero: false,
   });
   const [irIntensity, setIRIntensity] = useState(0.6);
   // Active base layer for the LayerSwitcher (rgb / ndvi / sar)
@@ -333,6 +345,8 @@ export function EarthWebMap() {
     () => buildTerminatorGeoJSON(new Date()),
   );
 
+  // ── Cache-clear toast ─────────────────────────────────────────────────────
+  const [cacheCleared, setCacheCleared] = useState(false);
   // ── Spec-Ops feature state (globe mode only) ───────────────────────────────
   const [specOpsActive, setSpecOpsActive] = useState({
     subsurface: false,
@@ -462,6 +476,72 @@ export function EarthWebMap() {
    */
   const workerCache = useMemo(() => new WorkerTileCache(), []);
   useEffect(() => () => workerCache.destroy(), [workerCache]);
+
+  function handleClearCache() {
+    workerCache.clearAll();
+    setCacheCleared(true);
+    setTimeout(() => setCacheCleared(false), 2500);
+  }
+
+  // ── Hero mode tour ────────────────────────────────────────────────────────
+  const heroTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const HERO_STOPS: Array<{ center: [number, number]; zoom: number }> = [
+    { center: [86.9252, 27.9881],  zoom: 11 }, // Mount Everest
+    { center: [-60.0,  -3.0],      zoom: 5  }, // Amazon Rainforest
+    { center: [-112.1, 36.1],      zoom: 10 }, // Grand Canyon
+    { center: [-60.0,  -75.0],     zoom: 4  }, // Antarctica
+    { center: [18.0,   70.0],      zoom: 5  }, // Arctic Aurora Zone
+    { center: [139.69, 35.69],     zoom: 10 }, // Tokyo
+    { center: [28.0,   -25.0],     zoom: 5  }, // Namib Desert
+  ];
+
+  const heroIndexRef = useRef(0);
+
+  function advanceHeroTour() {
+    // Guard: clear any pending timer before scheduling a new one to prevent
+    // multiple overlapping tours when the function is called concurrently.
+    if (heroTimerRef.current) {
+      clearTimeout(heroTimerRef.current);
+      heroTimerRef.current = null;
+    }
+    if (!layers.hero) return;
+    const stop = HERO_STOPS[heroIndexRef.current % HERO_STOPS.length];
+    mapRef.current?.flyTo({
+      center: stop.center,
+      zoom: stop.zoom,
+      duration: 4000,
+      curve: 1.4,
+      essential: true,
+    });
+    heroIndexRef.current += 1;
+    heroTimerRef.current = setTimeout(advanceHeroTour, 15_000);
+  }
+
+  // Start / stop hero tour when layers.hero changes
+  useEffect(() => {
+    if (layers.hero) {
+      heroIndexRef.current = 0;
+      advanceHeroTour();
+    } else {
+      if (heroTimerRef.current) clearTimeout(heroTimerRef.current);
+    }
+    return () => {
+      if (heroTimerRef.current) clearTimeout(heroTimerRef.current);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [layers.hero]);
+
+  // Exit hero mode on Escape key
+  useEffect(() => {
+    if (!layers.hero) return;
+    function onKey(e: KeyboardEvent) {
+      if (e.key === 'Escape') setLayers((prev) => ({ ...prev, hero: false }));
+    }
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [layers.hero]);
 
   /**
    * Active tile URL templates for pre-fetching.
@@ -645,6 +725,10 @@ export function EarthWebMap() {
          * which on a 2× screen maps exactly to 512 physical px (1:1).
          */
         pixelRatio={dpr}
+        // Enable 3D terrain extrusion when Mountain View is active.
+        // The terrain-dem source (Terrarium-encoded DEM) drives mesh elevation.
+        // exaggeration=1.5 gives a noticeable visual lift without overscaling.
+        terrain={layers.terrain ? { source: 'terrain-dem', exaggeration: 1.5 } : undefined}
       >
         {/* Base layer: NASA GIBS Blue Marble (proxied via tile server only).
             BlueMarble_NextGeneration is only available from GIBS in EPSG:4326;
@@ -664,16 +748,13 @@ export function EarthWebMap() {
           </Source>
         )}
 
-        {/* High-res gap-fill: ESRI World Imagery (z ≥ 2).
+        {/* High-res gap-fill: ESRI World Imagery.
             Always active so that areas without Sentinel-2 coverage (e.g.
-            Antarctica) are rendered sharply instead of being upscaled from
-            the z=8 GIBS Blue Marble. Falls back gracefully below Sentinel-2
-            where the tile server is available.
-            Source maxzoom is capped at 17: ESRI World Imagery has near-global
-            reliable coverage at z=17. Setting maxzoom higher causes 404s for
-            remote/low-density areas at z=18–19 which trigger the
-            "Map data not yet available" placeholder; at z=17 MapLibre
-            overzooms the tile instead, keeping the map visible everywhere.
+            Antarctica, poles) are rendered sharply.
+            Source maxzoom raised to 19: ESRI World Imagery has good coverage
+            at z=18–19 for most land areas; MapLibre overzooms the z=19 tile
+            above that rather than showing a blank gap, which is preferable for
+            polar and remote regions.
             tileSize uses retinaTileSize (128 on DPR≥2) so that HiDPI screens
             request z+1 tiles, matching the sharpness strategy used for GIBS. */}
         <Source
@@ -681,7 +762,7 @@ export function EarthWebMap() {
           type="raster"
           tiles={[ESRI_WORLD_IMAGERY_URL]}
           tileSize={retinaTileSize}
-          maxzoom={17}
+          maxzoom={19}
         >
           <Layer {...esriLayer} />
         </Source>
@@ -799,19 +880,32 @@ export function EarthWebMap() {
           </Source>
         )}
 
-        {/* Terrain hillshade: ESRI World Hillshade (mountains, hills and
-            natural formations).  Rendered as a semi-transparent overlay so
-            topographic relief is visible on top of any base imagery. */}
+        {/* Terrain — Mountain View mode:
+            1. Raster-DEM source (Terrarium encoding) drives MapLibre 3D terrain
+               extrusion so peaks physically rise on the map.
+            2. ESRI World Hillshade overlay on top for shaded relief, boosted
+               opacity (0.65) and contrast (0.2) for sharper ridge definition.
+            The <Map terrain> prop is conditionally set in the Map element. */}
         {layers.terrain && (
-          <Source
-            id="terrain"
-            type="raster"
-            tiles={[ESRI_HILLSHADE_URL]}
-            tileSize={retinaTileSize}
-            maxzoom={18}
-          >
-            <Layer {...terrainLayer} />
-          </Source>
+          <>
+            <Source
+              id="terrain-dem"
+              type="raster-dem"
+              tiles={[TERRAIN_RGB_URL]}
+              tileSize={256}
+              maxzoom={15}
+              encoding="terrarium"
+            />
+            <Source
+              id="terrain"
+              type="raster"
+              tiles={[ESRI_HILLSHADE_URL]}
+              tileSize={retinaTileSize}
+              maxzoom={18}
+            >
+              <Layer {...terrainLayer} />
+            </Source>
+          </>
         )}
 
         {/* Day/Night terminator */}
@@ -875,31 +969,79 @@ export function EarthWebMap() {
         ))}
       </Map>
 
-      {/* Crosshair */}
-      <div style={crosshairOuter} aria-hidden>
-        <svg width="32" height="32" viewBox="0 0 32 32" fill="none">
-          <line x1="16" y1="2"  x2="16" y2="12" stroke="rgba(80,160,255,0.7)" strokeWidth="1.5" />
-          <line x1="16" y1="20" x2="16" y2="30" stroke="rgba(80,160,255,0.7)" strokeWidth="1.5" />
-          <line x1="2"  y1="16" x2="12" y2="16" stroke="rgba(80,160,255,0.7)" strokeWidth="1.5" />
-          <line x1="20" y1="16" x2="30" y2="16" stroke="rgba(80,160,255,0.7)" strokeWidth="1.5" />
-          <circle cx="16" cy="16" r="2.5" stroke="rgba(80,160,255,0.9)" strokeWidth="1.2" />
-        </svg>
-      </div>
+      {/* Crosshair — hidden in hero mode for a clean cinematic look */}
+      {!layers.hero && (
+        <div style={crosshairOuter} aria-hidden>
+          <svg width="32" height="32" viewBox="0 0 32 32" fill="none">
+            <line x1="16" y1="2"  x2="16" y2="12" stroke="rgba(80,160,255,0.7)" strokeWidth="1.5" />
+            <line x1="16" y1="20" x2="16" y2="30" stroke="rgba(80,160,255,0.7)" strokeWidth="1.5" />
+            <line x1="2"  y1="16" x2="12" y2="16" stroke="rgba(80,160,255,0.7)" strokeWidth="1.5" />
+            <line x1="20" y1="16" x2="30" y2="16" stroke="rgba(80,160,255,0.7)" strokeWidth="1.5" />
+            <circle cx="16" cy="16" r="2.5" stroke="rgba(80,160,255,0.9)" strokeWidth="1.2" />
+          </svg>
+        </div>
+      )}
 
-      {/* HUD Panel */}
-      <HUDPanel
-        lat={cursorLat}
-        lon={cursorLon}
-        zoom={zoom}
-        activeLayers={activeLayers}
-        specOpsActive={specOpsActive}
-      />
+      {/* Hero mode vignette + exit button */}
+      {layers.hero && (
+        <>
+          {/* Radial vignette darkens edges for a cinematic look */}
+          <div
+            style={{
+              position: 'absolute',
+              inset: 0,
+              pointerEvents: 'none',
+              background: 'radial-gradient(ellipse at center, transparent 40%, rgba(0,0,10,0.72) 100%)',
+              animation: 'heroPulse 4s ease-in-out infinite',
+              zIndex: 6,
+            }}
+            aria-hidden
+          />
+          {/* Exit Hero button — top-right corner */}
+          <button
+            style={{
+              position: 'absolute',
+              top: 16,
+              right: 16,
+              padding: '8px 18px',
+              background: 'rgba(8,12,30,0.88)',
+              backdropFilter: 'blur(10px)',
+              WebkitBackdropFilter: 'blur(10px)',
+              border: '1px solid rgba(240,192,64,0.5)',
+              borderRadius: 8,
+              color: '#f0c040',
+              fontSize: '0.75rem',
+              fontWeight: 600,
+              letterSpacing: '0.08em',
+              cursor: 'pointer',
+              zIndex: 20,
+              boxShadow: '0 0 16px 2px rgba(240,192,64,0.2)',
+              animation: 'heroExitBtn 0.4s ease-out both',
+            }}
+            onClick={() => setLayers((prev) => ({ ...prev, hero: false }))}
+            type="button"
+          >
+            ✕ EXIT HERO
+          </button>
+        </>
+      )}
 
-      {/* Search Bar — top-centre geocoding search */}
-      <SearchBar onSelect={handleSearchSelect} />
+      {/* HUD Panel — hidden in hero mode */}
+      {!layers.hero && (
+        <HUDPanel
+          lat={cursorLat}
+          lon={cursorLon}
+          zoom={zoom}
+          activeLayers={activeLayers}
+          specOpsActive={specOpsActive}
+        />
+      )}
+
+      {/* Search Bar — top-centre geocoding search — hidden in hero mode */}
+      {!layers.hero && <SearchBar onSelect={handleSearchSelect} />}
 
       {/* Layer Switcher — top-centre segmented control for RGB / NDVI / SAR */}
-      {TILE_SERVER_AVAILABLE && (
+      {TILE_SERVER_AVAILABLE && !layers.hero && (
         <LayerSwitcher
           activeLayer={activeBaseLayer}
           onLayerChange={(id) => {
@@ -925,48 +1067,107 @@ export function EarthWebMap() {
         onIRIntensityChange={setIRIntensity}
       />
 
-      {/* My Location button */}
-      <button
-        style={{
-          position: 'absolute',
-          bottom: 40,
-          left: 76,
-          width: 44,
-          height: 44,
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          background: 'rgba(8,12,30,0.82)',
-          backdropFilter: 'blur(10px)',
-          WebkitBackdropFilter: 'blur(10px)',
-          border: userLocation ? '1px solid #3c82ff' : '1px solid rgba(80,160,255,0.18)',
-          borderRadius: 10,
-          cursor: locating ? 'wait' : 'pointer',
-          zIndex: 10,
-          fontSize: '1.2rem',
-          animation: 'slideInLeft 0.5s cubic-bezier(0.22,1,0.36,1) 1.3s both',
-          boxShadow: userLocation ? '0 0 12px 2px rgba(60,130,255,0.3)' : 'none',
-        }}
-        onClick={handleLocateMe}
-        title="My Location"
-        type="button"
-        aria-label="My Location"
-      >
-        {locating ? '⏳' : '📍'}
-      </button>
+      {/* My Location button — hidden in hero mode */}
+      {!layers.hero && (
+        <button
+          style={{
+            position: 'absolute',
+            bottom: 40,
+            left: 76,
+            width: 44,
+            height: 44,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            background: 'rgba(8,12,30,0.82)',
+            backdropFilter: 'blur(10px)',
+            WebkitBackdropFilter: 'blur(10px)',
+            border: userLocation ? '1px solid #3c82ff' : '1px solid rgba(80,160,255,0.18)',
+            borderRadius: 10,
+            cursor: locating ? 'wait' : 'pointer',
+            zIndex: 10,
+            fontSize: '1.2rem',
+            animation: 'slideInLeft 0.5s cubic-bezier(0.22,1,0.36,1) 1.3s both',
+            boxShadow: userLocation ? '0 0 12px 2px rgba(60,130,255,0.3)' : 'none',
+          }}
+          onClick={handleLocateMe}
+          title="My Location"
+          type="button"
+          aria-label="My Location"
+        >
+          {locating ? (
+            <svg width="20" height="20" viewBox="0 0 20 20" fill="none" aria-hidden>
+              <circle cx="10" cy="10" r="7" stroke="rgba(80,160,255,0.6)" strokeWidth="1.5" strokeDasharray="4 2">
+                <animateTransform attributeName="transform" type="rotate" from="0 10 10" to="360 10 10" dur="1s" repeatCount="indefinite"/>
+              </circle>
+            </svg>
+          ) : (
+            <svg width="20" height="20" viewBox="0 0 20 20" fill="none" aria-hidden>
+              <circle cx="10" cy="10" r="3" fill={userLocation ? '#3c82ff' : 'rgba(150,200,255,0.7)'} stroke="white" strokeWidth="1.5"/>
+              <circle cx="10" cy="10" r="7" stroke={userLocation ? '#3c82ff' : 'rgba(80,160,255,0.4)'} strokeWidth="1.3"/>
+              <line x1="10" y1="2" x2="10" y2="4" stroke={userLocation ? '#3c82ff' : 'rgba(80,160,255,0.5)'} strokeWidth="1.5" strokeLinecap="round"/>
+              <line x1="10" y1="16" x2="10" y2="18" stroke={userLocation ? '#3c82ff' : 'rgba(80,160,255,0.5)'} strokeWidth="1.5" strokeLinecap="round"/>
+              <line x1="2" y1="10" x2="4" y2="10" stroke={userLocation ? '#3c82ff' : 'rgba(80,160,255,0.5)'} strokeWidth="1.5" strokeLinecap="round"/>
+              <line x1="16" y1="10" x2="18" y2="10" stroke={userLocation ? '#3c82ff' : 'rgba(80,160,255,0.5)'} strokeWidth="1.5" strokeLinecap="round"/>
+            </svg>
+          )}
+        </button>
+      )}
 
-      {/* Saved views panel */}
-      <SavedLocationsPanel
-        locations={savedLocations}
-        onAdd={handleAddLocation}
-        onRemove={handleRemoveLocation}
-        onFlyTo={handleFlyTo}
-      />
+      {/* Saved views panel — hidden in hero mode */}
+      {!layers.hero && (
+        <SavedLocationsPanel
+          locations={savedLocations}
+          onAdd={handleAddLocation}
+          onRemove={handleRemoveLocation}
+          onFlyTo={handleFlyTo}
+        />
+      )}
 
-      {/* Attribution bar */}
-      <div style={attributionBar}>
-        <span>
-          🌍{' '}
+      {/* Clear tile cache button — bottom-right, above saved views panel */}
+      {!layers.hero && (
+        <div
+          style={{
+            position: 'absolute',
+            bottom: 40,
+            right: 220,
+            zIndex: 10,
+            animation: 'slideInRight 0.5s cubic-bezier(0.22,1,0.36,1) 1.4s both',
+          }}
+        >
+          <button
+            style={{
+              padding: '6px 12px',
+              background: cacheCleared ? 'rgba(52,211,153,0.18)' : 'rgba(8,12,30,0.82)',
+              backdropFilter: 'blur(10px)',
+              WebkitBackdropFilter: 'blur(10px)',
+              border: cacheCleared
+                ? '1px solid rgba(52,211,153,0.6)'
+                : '1px solid rgba(80,160,255,0.18)',
+              borderRadius: 8,
+              cursor: 'pointer',
+              color: cacheCleared ? '#34d399' : 'rgba(150,200,255,0.7)',
+              fontSize: '0.62rem',
+              fontFamily: 'ui-monospace, monospace',
+              letterSpacing: '0.06em',
+              whiteSpace: 'nowrap',
+              transition: 'all 0.3s ease',
+              boxShadow: cacheCleared ? '0 0 10px 2px rgba(52,211,153,0.2)' : 'none',
+            }}
+            onClick={handleClearCache}
+            title="Clear tile cache (frees disk space)"
+            type="button"
+          >
+            {cacheCleared ? '✓ Cache cleared' : '🗑 Clear cache'}
+          </button>
+        </div>
+      )}
+
+      {/* Attribution bar — hidden in hero mode */}
+      {!layers.hero && (
+        <div style={attributionBar}>
+          <span>
+            🌍{' '}
           <a
             href="https://nasa.gov/gibs"
             target="_blank"
@@ -1022,6 +1223,7 @@ export function EarthWebMap() {
         </span>
         <span>ZOOM {zoom.toFixed(1)}</span>
       </div>
+      )}
     </div>
   );
 }

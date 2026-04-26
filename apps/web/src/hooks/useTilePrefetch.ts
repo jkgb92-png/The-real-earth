@@ -95,6 +95,15 @@ function buildTileUrl(template: string, z: number, x: number, y: number): string
  * `onMove` / `onZoom` handler with the current map bounds to warm the browser
  * tile cache ahead of MapLibre's own requests.
  *
+ * Polar coverage
+ * ──────────────
+ * Web Mercator tiles do not extend past ±85.05° latitude, so the standard
+ * y-range calculation misses tiles near the poles.  When the viewport north
+ * bound is above POLAR_THRESHOLD (70 °N) or south bound is below
+ * -POLAR_THRESHOLD (70 °S) we schedule an additional pass that covers the
+ * full x range at that zoom level for the extreme latitude rows.  This ensures
+ * Arctic and Antarctic tiles are warm before the user pans there.
+ *
  * @param tileUrlTemplates  Array of URL templates containing `{z}`, `{x}`, `{y}`.
  * @param maxTiles          Maximum tiles to schedule per `prefetch()` call (default 24).
  * @param workerCache       Optional WorkerTileCache instance. When provided, tiles
@@ -137,16 +146,57 @@ export function useTilePrefetch(
             seen.current.add(url);
 
             if (workerCache) {
-              // Off-thread persistent caching via Cache API worker
               workerCache.prefetch(url);
             } else {
-              // `new Image()` shares the browser's image cache with MapLibre.
-              // Setting .src schedules a low-priority background fetch; no need
-              // to attach the element to the DOM or handle load events.
               const img = new Image();
               img.src = url;
             }
             fetched++;
+          }
+        }
+      }
+
+      // ── Polar prefetch pass ────────────────────────────────────────────────
+      // When the viewport touches high latitudes, schedule the extreme tile
+      // rows so Arctic / Antarctic tiles are warm when the user pans there.
+      // We limit this to z ≤ 6 to keep request counts reasonable; above that
+      // the tile count at the poles is too large to prefetch cheaply.
+      const POLAR_THRESHOLD = 70;
+      if (z <= 6) {
+        const polarRows: number[] = [];
+        if (viewport.north > POLAR_THRESHOLD) {
+          // Top rows (Arctic): y values close to 0
+          const yPolar = latToTileY(85.051129, z);
+          for (let py = yPolar; py <= Math.min(maxIndex, yPolar + 1); py++) {
+            polarRows.push(py);
+          }
+        }
+        if (viewport.south < -POLAR_THRESHOLD) {
+          // Bottom rows (Antarctic): y values close to maxIndex
+          const yPolar = latToTileY(-85.051129, z);
+          for (let py = Math.max(0, yPolar - 1); py <= yPolar; py++) {
+            polarRows.push(py);
+          }
+        }
+        if (polarRows.length > 0) {
+          const polarMaxTiles = Math.min(maxTiles, 2 ** z); // never exceed total row width
+          let polarFetched = 0;
+          outerPolar: for (const template of tileUrlTemplates) {
+            for (let px = 0; px <= maxIndex; px++) {
+              for (const py of polarRows) {
+                if (polarFetched >= polarMaxTiles) break outerPolar;
+                const url = buildTileUrl(template, z, px, py);
+                if (seen.current.has(url)) continue;
+                seen.current.add(url);
+                if (workerCache) {
+                  workerCache.prefetch(url);
+                } else {
+                  const img = new Image();
+                  img.src = url;
+                }
+                polarFetched++;
+              }
+            }
           }
         }
       }
