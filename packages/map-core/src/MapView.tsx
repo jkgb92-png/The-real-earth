@@ -210,7 +210,7 @@ export function EarthMapView({
           id="overlay-layer"
           sourceID="overlay-source"
           minZoomLevel={activeLayer === 'sar' ? 6 : 10}
-          style={{ rasterOpacity: 1, rasterResampling: 'nearest' }}
+          style={{ rasterOpacity: 1, rasterResampling: 'linear' }}
         />
       </RasterSource>
     </MapView>

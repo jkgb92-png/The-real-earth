@@ -175,10 +175,14 @@ const sentinelLayer: RasterLayerSpecification = {
   id: 'sentinel-layer',
   type: 'raster',
   source: 'sentinel',
+  // linear resampling: synthesized overzoom tiles from the backend are
+  // Lanczos-upscaled; linear GPU filtering preserves smooth edges and avoids
+  // the blocky nearest-neighbour artefacts that occur when MapLibre scales
+  // a tile texture to fill the viewport at zoom 20-25.
   // fade-duration=0: tiles pop in instantly — eliminates the blurry upscaled
   // parent tile visible during the cross-fade window, which is particularly
   // noticeable over featureless areas like Antarctic ice and open ocean.
-  paint: { 'raster-opacity': 1, 'raster-resampling': 'nearest', 'raster-fade-duration': 0 },
+  paint: { 'raster-opacity': 1, 'raster-resampling': 'linear', 'raster-fade-duration': 0 },
 };
 
 const ndviLayer: RasterLayerSpecification = {
@@ -186,7 +190,9 @@ const ndviLayer: RasterLayerSpecification = {
   type: 'raster',
   source: 'ndvi',
   minzoom: 10,
-  paint: { 'raster-opacity': 1, 'raster-resampling': 'nearest', 'raster-fade-duration': 0 },
+  // linear resampling for the same reason as sentinelLayer: synthesized tiles
+  // benefit from smooth GPU filtering at zoom 20-25.
+  paint: { 'raster-opacity': 1, 'raster-resampling': 'linear', 'raster-fade-duration': 0 },
 };
 
 const sarLayer: RasterLayerSpecification = {
@@ -194,7 +200,9 @@ const sarLayer: RasterLayerSpecification = {
   type: 'raster',
   source: 'sar',
   minzoom: 6,
-  paint: { 'raster-opacity': 1, 'raster-resampling': 'nearest', 'raster-fade-duration': 0 },
+  // linear resampling: consistent with sentinelLayer — smooth filtering for
+  // high-zoom synthesized tiles.
+  paint: { 'raster-opacity': 1, 'raster-resampling': 'linear', 'raster-fade-duration': 0 },
 };
 
 const bathymetryLayer: RasterLayerSpecification = {
