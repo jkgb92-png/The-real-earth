@@ -166,6 +166,132 @@ def test_composite_tile_missing():
 
 
 # ---------------------------------------------------------------------------
+# Overzoom synthesis — sentinel tiles synthesized from a parent zoom level
+# ---------------------------------------------------------------------------
+
+def _write_sentinel_tif(tif_path, r=1000, g=1200, b=900, nir=200):
+    """Write a minimal 4-band GeoTIFF (4×4 px) to *tif_path*."""
+    import numpy as np
+    import rasterio
+    from rasterio.transform import from_bounds
+
+    tif_path.parent.mkdir(parents=True, exist_ok=True)
+    with rasterio.open(
+        str(tif_path), "w", driver="GTiff", height=4, width=4,
+        count=4, dtype=np.uint16, crs="EPSG:4326",
+        transform=from_bounds(0, 0, 1, 1, 4, 4),
+    ) as dst:
+        dst.write(np.full((4, 4), r,   dtype=np.uint16), 1)
+        dst.write(np.full((4, 4), g,   dtype=np.uint16), 2)
+        dst.write(np.full((4, 4), b,   dtype=np.uint16), 3)
+        dst.write(np.full((4, 4), nir, dtype=np.uint16), 4)
+
+
+def test_sentinel_overzoom_returns_png(monkeypatch, tmp_path):
+    """
+    When the tile store has data at z=18 but not z=20, a request for z=20
+    should synthesize a tile from the z=18 ancestor and return HTTP 200 PNG.
+
+    x=20, y=20 at z=20 → parent at z=18 is x=20>>2=5, y=20>>2=5.
+    """
+    parent_z, parent_x, parent_y = 18, 5, 5
+    tif_dir = tmp_path / str(parent_z) / str(parent_x) / str(parent_y)
+    for fname in ("2024-01-01.tif", "2024-02-01.tif"):
+        _write_sentinel_tif(tif_dir / fname)
+
+    import backend.compositing as comp_module
+    monkeypatch.setattr(comp_module, "TILE_STORE", tmp_path)
+
+    client = TestClient(app)
+    response = client.get("/tiles/sentinel/20/20/20")
+    assert response.status_code == 200
+    assert response.headers["content-type"] == "image/png"
+
+    from PIL import Image
+    import io as _io
+    img = Image.open(_io.BytesIO(response.content))
+    assert img.size == (256, 256)
+
+
+def test_sentinel_overzoom_returns_webp(monkeypatch, tmp_path):
+    """
+    Same overzoom scenario but with Accept: image/webp — should return WebP.
+    """
+    parent_z, parent_x, parent_y = 18, 5, 5
+    tif_dir = tmp_path / str(parent_z) / str(parent_x) / str(parent_y)
+    for fname in ("2024-01-01.tif", "2024-02-01.tif"):
+        _write_sentinel_tif(tif_dir / fname)
+
+    import backend.compositing as comp_module
+    monkeypatch.setattr(comp_module, "TILE_STORE", tmp_path)
+
+    client = TestClient(app)
+    response = client.get(
+        "/tiles/sentinel/20/20/20",
+        headers={"Accept": "image/webp,image/png,*/*"},
+    )
+    assert response.status_code == 200
+    assert response.headers["content-type"] == "image/webp"
+
+
+def test_sentinel_overzoom_returns_404_when_no_ancestor(monkeypatch, tmp_path):
+    """
+    When no ancestor tile exists within _MAX_OVERZOOM_STEPS, the endpoint
+    should still return 404 rather than a synthesized tile.
+    """
+    import backend.compositing as comp_module
+    monkeypatch.setattr(comp_module, "TILE_STORE", tmp_path)
+
+    client = TestClient(app)
+    # tmp_path is empty → no tile data at any zoom level
+    response = client.get("/tiles/sentinel/20/20/20")
+    assert response.status_code == 404
+
+
+# ---------------------------------------------------------------------------
+# Overzoom synthesis — NDVI tiles synthesized from a parent zoom level
+# ---------------------------------------------------------------------------
+
+def test_ndvi_overzoom_returns_png(monkeypatch, tmp_path):
+    """
+    When NDVI tile store has data at z=18 but not z=20, requesting z=20
+    should synthesize a colourised NDVI tile and return HTTP 200 PNG.
+    """
+    import numpy as np
+    import rasterio
+    from rasterio.transform import from_bounds
+
+    parent_z, parent_x, parent_y = 18, 5, 5
+    tif_dir = tmp_path / str(parent_z) / str(parent_x) / str(parent_y)
+    tif_dir.mkdir(parents=True)
+
+    tif_path = tif_dir / "2024-01-01.tif"
+    with rasterio.open(
+        str(tif_path), "w", driver="GTiff", height=4, width=4,
+        count=4, dtype=np.uint16, crs="EPSG:4326",
+        transform=from_bounds(0, 0, 1, 1, 4, 4),
+    ) as dst:
+        # NIR > Red → positive NDVI (healthy vegetation)
+        dst.write(np.full((4, 4), 100, dtype=np.uint16), 1)  # Red
+        dst.write(np.full((4, 4), 150, dtype=np.uint16), 2)  # Green
+        dst.write(np.full((4, 4), 120, dtype=np.uint16), 3)  # Blue
+        dst.write(np.full((4, 4), 800, dtype=np.uint16), 4)  # NIR
+
+    import backend.ndvi as ndvi_module
+    monkeypatch.setattr(ndvi_module, "TILE_STORE", tmp_path)
+
+    client = TestClient(app)
+    response = client.get("/tiles/ndvi/20/20/20")
+    assert response.status_code == 200
+    assert response.headers["content-type"] == "image/png"
+
+    from PIL import Image
+    import io as _io
+    img = Image.open(_io.BytesIO(response.content))
+    assert img.size == (256, 256)
+
+
+# ---------------------------------------------------------------------------
 # /api/terminator — structure and caching
 # ---------------------------------------------------------------------------
 

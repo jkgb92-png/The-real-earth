@@ -28,12 +28,12 @@ import io
 import os
 import warnings
 from pathlib import Path
-from typing import List
+from typing import List, Optional
 
 import numpy as np
 import rasterio
 from fastapi import FastAPI, Query, Response
-from PIL import Image
+from PIL import Image, ImageFilter
 
 from .config import Settings
 
@@ -155,6 +155,114 @@ def composite_to_png(composite: np.ndarray) -> bytes:
 
 
 # ---------------------------------------------------------------------------
+# Overzoom tile synthesis
+# ---------------------------------------------------------------------------
+
+# Maximum number of zoom levels above the available data that we will
+# synthesize via Lanczos upscaling.  Beyond this, we return 404.
+_MAX_OVERZOOM_STEPS = 4
+
+# Standard web-mercator tile size (px); tiles are always returned at this size.
+_TILE_SIZE = 256
+
+
+def _crop_to_child(img: Image.Image, xc: int, yc: int) -> Image.Image:
+    """
+    Crop one quadrant from a parent tile PIL image.
+
+    *xc* and *yc* are 0 or 1 and select which quadrant to keep:
+        (0,0) → top-left    (1,0) → top-right
+        (0,1) → bottom-left (1,1) → bottom-right
+    """
+    w, h = img.size
+    half_w, half_h = w // 2, h // 2
+    left = xc * half_w
+    top = yc * half_h
+    return img.crop((left, top, left + half_w, top + half_h))
+
+
+def synthesize_overzoom_tile(
+    z: int,
+    x: int,
+    y: int,
+    tile_store: Path,
+    passes: int = 8,
+    year: Optional[int] = None,
+    want_webp: bool = False,
+) -> Optional[tuple[bytes, str]]:
+    """
+    Synthesize a tile at (z, x, y) when no native data exists at that zoom.
+
+    Walks up the zoom-level hierarchy (up to _MAX_OVERZOOM_STEPS levels) until
+    it finds an ancestor tile with enough GeoTIFF passes.  It then:
+
+      1. Composites the ancestor tile into an RGB image.
+      2. Crops the relevant sub-region for each intermediate zoom step.
+      3. Lanczos-upscales the crop back to _TILE_SIZE × _TILE_SIZE pixels.
+      4. Applies a mild unsharp-mask to restore crispness lost in upscaling.
+
+    Returns ``(image_bytes, mime_type)`` on success, or ``None`` if no
+    suitable ancestor tile was found within _MAX_OVERZOOM_STEPS levels.
+    """
+    for step in range(1, _MAX_OVERZOOM_STEPS + 1):
+        pz = z - step
+        if pz < 0:
+            break
+
+        px = x >> step
+        py = y >> step
+
+        parent_dir = tile_store / str(pz) / str(px) / str(py)
+        if not parent_dir.exists():
+            continue
+
+        all_paths = sorted(parent_dir.glob("*.tif"))
+        if year is not None:
+            year_prefix = str(year)
+            all_paths = [p for p in all_paths if p.name.startswith(year_prefix)]
+        tile_paths_list = all_paths[:passes]
+
+        if len(tile_paths_list) < 2:
+            continue
+
+        # Composite the ancestor tile into an RGB PIL image.
+        composite = median_composite([str(p) for p in tile_paths_list])
+        normalized = normalize_composite(composite)
+        rgb = (normalized[:3] / 256).astype(np.uint8)
+        parent_img = Image.fromarray(np.moveaxis(rgb, 0, -1))
+
+        # Navigate from the ancestor down to the target tile by cropping one
+        # quadrant at a time, outermost zoom level first.
+        # At each sub-step s (counting down from `step` to 1) the x/y bit at
+        # position (s-1) selects whether to keep the left/right and top/bottom
+        # half of the current image.
+        cropped = parent_img
+        for s in range(step, 0, -1):
+            xc = (x >> (s - 1)) & 1
+            yc = (y >> (s - 1)) & 1
+            cropped = _crop_to_child(cropped, xc, yc)
+
+        # Lanczos-upsample to the standard tile size.
+        upscaled = cropped.resize((_TILE_SIZE, _TILE_SIZE), Image.LANCZOS)
+
+        # Mild unsharp mask: restores edge crispness lost during upscaling
+        # without introducing noticeable ringing artefacts.
+        sharpened = upscaled.filter(
+            ImageFilter.UnsharpMask(radius=1.2, percent=110, threshold=3)
+        )
+
+        buf = io.BytesIO()
+        if want_webp:
+            sharpened.save(buf, format="WEBP", quality=90)
+            return buf.getvalue(), "image/webp"
+        else:
+            sharpened.save(buf, format="PNG", optimize=True)
+            return buf.getvalue(), "image/png"
+
+    return None
+
+
+# ---------------------------------------------------------------------------
 # API endpoint
 # ---------------------------------------------------------------------------
 
@@ -208,6 +316,16 @@ async def get_composite_tile(
     tile_paths = all_paths[:passes]
 
     if len(tile_paths) < 2:
+        # No native data at this zoom level; try to synthesize from the nearest
+        # ancestor tile using Lanczos upscaling (sharper than MapLibre's
+        # client-side overzooming with nearest-neighbour or bilinear resampling).
+        synth = synthesize_overzoom_tile(
+            z, x, y, TILE_STORE, passes=passes, year=year,
+            want_webp=("image/webp" in accept),
+        )
+        if synth is not None:
+            content, mime = synth
+            return Response(content=content, media_type=mime)
         return Response(status_code=404, content="Not enough tile passes available")
 
     composite = median_composite([str(p) for p in tile_paths])
