@@ -486,19 +486,25 @@ export function EarthWebMap() {
   // ── Hero mode tour ────────────────────────────────────────────────────────
   const heroTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const HERO_STOPS: Array<{ center: [number, number]; zoom: number; label: string }> = [
-    { center: [86.9252, 27.9881],  zoom: 11, label: 'Mount Everest' },
-    { center: [-60.0,  -3.0],      zoom: 5,  label: 'Amazon Rainforest' },
-    { center: [-112.1, 36.1],      zoom: 10, label: 'Grand Canyon' },
-    { center: [-60.0,  -75.0],     zoom: 4,  label: 'Antarctica' },
-    { center: [18.0,   70.0],      zoom: 5,  label: 'Arctic Aurora Zone' },
-    { center: [139.69, 35.69],     zoom: 10, label: 'Tokyo' },
-    { center: [28.0,   -25.0],     zoom: 5,  label: 'Namib Desert' },
+  const HERO_STOPS: Array<{ center: [number, number]; zoom: number }> = [
+    { center: [86.9252, 27.9881],  zoom: 11 }, // Mount Everest
+    { center: [-60.0,  -3.0],      zoom: 5  }, // Amazon Rainforest
+    { center: [-112.1, 36.1],      zoom: 10 }, // Grand Canyon
+    { center: [-60.0,  -75.0],     zoom: 4  }, // Antarctica
+    { center: [18.0,   70.0],      zoom: 5  }, // Arctic Aurora Zone
+    { center: [139.69, 35.69],     zoom: 10 }, // Tokyo
+    { center: [28.0,   -25.0],     zoom: 5  }, // Namib Desert
   ];
 
   const heroIndexRef = useRef(0);
 
   function advanceHeroTour() {
+    // Guard: clear any pending timer before scheduling a new one to prevent
+    // multiple overlapping tours when the function is called concurrently.
+    if (heroTimerRef.current) {
+      clearTimeout(heroTimerRef.current);
+      heroTimerRef.current = null;
+    }
     if (!layers.hero) return;
     const stop = HERO_STOPS[heroIndexRef.current % HERO_STOPS.length];
     mapRef.current?.flyTo({

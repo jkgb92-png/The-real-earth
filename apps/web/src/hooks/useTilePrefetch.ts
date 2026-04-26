@@ -181,10 +181,10 @@ export function useTilePrefetch(
         if (polarRows.length > 0) {
           const polarMaxTiles = Math.min(maxTiles, 2 ** z); // never exceed total row width
           let polarFetched = 0;
-          polarOuter: for (const template of tileUrlTemplates) {
+          outerPolar: for (const template of tileUrlTemplates) {
             for (let px = 0; px <= maxIndex; px++) {
               for (const py of polarRows) {
-                if (polarFetched >= polarMaxTiles) break polarOuter;
+                if (polarFetched >= polarMaxTiles) break outerPolar;
                 const url = buildTileUrl(template, z, px, py);
                 if (seen.current.has(url)) continue;
                 seen.current.add(url);
