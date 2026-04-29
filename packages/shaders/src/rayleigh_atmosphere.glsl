@@ -3,12 +3,15 @@
  *
  * Enhanced Rayleigh scattering atmospheric fragment shader for CesiumJS PostProcessStage.
  *
- * Simulates how sunlight scatters through the atmosphere at low altitudes,
- * producing:
+ * Simulates how sunlight scatters through the atmosphere, producing:
  *  - The "Blue Marble" atmospheric haze from orbit
  *  - Limb brightening: an iconic bright-blue halo at the planet horizon
  *  - Chromatic sunset dispersion: warm reddish-orange tones at low altitudes
  *    along sunrise/sunset terminator zones
+ *
+ * Ground-level clarity: the effect is faded to zero below 500 m so that
+ * a camera positioned at street level sees clear, undistorted surface
+ * imagery rather than a heavy atmospheric blue tint.
  *
  * Usage (CesiumJS):
  *   import { rayleighShader } from '@the-real-earth/shaders';
@@ -39,6 +42,14 @@ void main() {
     // Guard against altitude ≤ 0 (camera below ellipsoid at init or deep zoom)
     // which would make exp() return > 1 and extrapolate colors out of range.
     float scatter = exp(-max(altitude, 0.0) / 8500.0);
+
+    // Ground-level fade: when the camera is inside the lower atmosphere
+    // (altitude < 500 m) the atmospheric post-process tint makes the view
+    // blue and hazy.  Fade the effect to zero below 500 m so the surface is
+    // rendered clear and undistorted, with a smooth transition back to full
+    // atmosphere above 10 000 m.
+    float groundFade = smoothstep(500.0, 10000.0, altitude);
+    scatter *= groundFade;
 
     // Primary blue-sky scatter colour.
     vec3 blueScatter = vec3(0.18, 0.36, 0.72);
