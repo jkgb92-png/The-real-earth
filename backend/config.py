@@ -29,3 +29,7 @@ class Settings(BaseSettings):
     # Copernicus / ESA
     copernicus_client_id: str = ""
     copernicus_client_secret: str = ""
+
+    # AUTOMATIC1111 Stable Diffusion WebUI (AI tile enhancement)
+    a1111_url: str = "http://localhost:7860"
+    a1111_enabled: bool = False

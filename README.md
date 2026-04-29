@@ -95,3 +95,5 @@ docker compose -f infra/docker-compose.yml up
 | `GIBS_BASE_URL` | NASA GIBS WMTS endpoint (default provided) |
 | `SAR_MODEL_PATH` | Path to TorchScript SAR-to-optical model |
 | `TILE_STORE_PATH` | Local directory for raw GeoTIFF tile archives |
+| `A1111_ENABLED` | Set `true` to enable AI tile enhancement via AUTOMATIC1111 |
+| `A1111_URL` | AUTOMATIC1111 server URL (default: `http://localhost:7860`) |
