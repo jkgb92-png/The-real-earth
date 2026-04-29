@@ -29,6 +29,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from .compositing import app as compositing_app, get_composite_tile
 from .config import Settings
 from .ndvi import get_ndvi_tile
+from .a1111 import enhance_image
 
 settings = Settings()
 
@@ -321,8 +322,6 @@ async def ai_enhance(
     if not raw:
         return Response(status_code=400, content="Empty file upload")
 
-    from .a1111 import enhance_image
-
     try:
         enhanced = await enhance_image(
             image_bytes=raw,
@@ -330,8 +329,8 @@ async def ai_enhance(
             prompt=prompt or None,
             denoising_strength=denoising_strength,
         )
-    except Exception as exc:
-        return Response(status_code=502, content=f"A1111 error: {exc}")
+    except Exception:
+        return Response(status_code=502, content="A1111 enhancement failed")
 
     return Response(content=enhanced, media_type="image/png")
 
