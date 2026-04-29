@@ -33,12 +33,13 @@ from __future__ import annotations
 import io
 import warnings
 from pathlib import Path
+from typing import Optional
 
 import numpy as np
 from fastapi import Response
-from PIL import Image
+from PIL import Image, ImageFilter
 
-from .compositing import load_tile_as_array
+from .compositing import load_tile_as_array, _crop_to_child, _TILE_SIZE, _MAX_OVERZOOM_STEPS
 from .config import Settings
 
 settings = Settings()
@@ -139,6 +140,78 @@ def ndvi_to_webp(ndvi: np.ndarray) -> bytes:
 
 
 # ---------------------------------------------------------------------------
+# Overzoom NDVI tile synthesis
+# ---------------------------------------------------------------------------
+
+def synthesize_ndvi_overzoom_tile(
+    z: int,
+    x: int,
+    y: int,
+    tile_store: Path,
+    passes: int = 8,
+    want_webp: bool = False,
+) -> Optional[tuple[bytes, str]]:
+    """
+    Synthesize an NDVI tile at (z, x, y) when no native data exists.
+
+    Mirrors the logic in compositing.synthesize_overzoom_tile but produces a
+    colourised NDVI image instead of an RGB composite.  Walks up to
+    _MAX_OVERZOOM_STEPS zoom levels to find an ancestor with data, crops the
+    relevant quadrant(s), Lanczos-upscales and applies an unsharp mask.
+
+    Returns ``(image_bytes, mime_type)`` on success, or ``None`` when no
+    suitable ancestor is found within _MAX_OVERZOOM_STEPS levels.
+    """
+    for step in range(1, _MAX_OVERZOOM_STEPS + 1):
+        pz = z - step
+        if pz < 0:
+            break
+
+        px = x >> step
+        py = y >> step
+
+        parent_dir = tile_store / str(pz) / str(px) / str(py)
+        if not parent_dir.exists():
+            continue
+
+        tile_paths = sorted(parent_dir.glob("*.tif"))[:passes]
+        # One pass is sufficient for NDVI: the per-pixel formula does not
+        # depend on temporal median compositing (no cloud masking), unlike the
+        # RGB compositor which needs at least 2 passes to suppress artefacts.
+        if len(tile_paths) < 1:
+            continue
+
+        try:
+            ndvi_arr = compute_ndvi([str(p) for p in tile_paths])
+        except ValueError:
+            continue
+
+        parent_img = Image.fromarray(ndvi_to_image(ndvi_arr))
+
+        # Crop down to the target quadrant, one zoom step at a time.
+        cropped = parent_img
+        for s in range(step, 0, -1):
+            xc = (x >> (s - 1)) & 1
+            yc = (y >> (s - 1)) & 1
+            cropped = _crop_to_child(cropped, xc, yc)
+
+        upscaled = cropped.resize((_TILE_SIZE, _TILE_SIZE), Image.LANCZOS)
+        sharpened = upscaled.filter(
+            ImageFilter.UnsharpMask(radius=1.2, percent=110, threshold=3)
+        )
+
+        buf = io.BytesIO()
+        if want_webp:
+            sharpened.save(buf, format="WEBP", quality=85)
+            return buf.getvalue(), "image/webp"
+        else:
+            sharpened.save(buf, format="PNG", optimize=True)
+            return buf.getvalue(), "image/png"
+
+    return None
+
+
+# ---------------------------------------------------------------------------
 # Tile handler -- called directly from tile_server.py
 # ---------------------------------------------------------------------------
 
@@ -179,6 +252,14 @@ async def get_ndvi_tile(
     tile_paths = sorted(tile_dir.glob("*.tif"))[:passes]
 
     if len(tile_paths) < 1:
+        # No native data; try to synthesize from the nearest ancestor tile.
+        synth = synthesize_ndvi_overzoom_tile(
+            z, x, y, TILE_STORE, passes=passes,
+            want_webp=("image/webp" in accept),
+        )
+        if synth is not None:
+            content, mime = synth
+            return Response(content=content, media_type=mime)
         return Response(status_code=404, content="No tile passes available")
 
     try:
