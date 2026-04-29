@@ -23,7 +23,7 @@ import time
 from typing import Any, Dict
 
 import httpx
-from fastapi import FastAPI, Path, Query, Request, Response
+from fastapi import FastAPI, File, Path, Query, Request, Response, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 
 from .compositing import app as compositing_app, get_composite_tile
@@ -268,6 +268,72 @@ async def sar_tile(
 @app.get("/health")
 async def health() -> dict:
     return {"status": "ok", "service": "tile-server"}
+
+
+# ---------------------------------------------------------------------------
+# /api/ai-enhance — AUTOMATIC1111 img2img satellite tile enhancement
+# ---------------------------------------------------------------------------
+
+@app.post(
+    "/api/ai-enhance",
+    summary="AI-enhance a satellite tile via AUTOMATIC1111 img2img",
+    response_class=Response,
+)
+async def ai_enhance(
+    file: UploadFile = File(..., description="PNG/JPEG/WebP tile image to enhance"),
+    prompt: str = Query(
+        default="",
+        description=(
+            "Enhancement prompt. "
+            "Leave empty to use the default satellite-imagery prompt."
+        ),
+    ),
+    denoising_strength: float = Query(
+        default=0.25,
+        ge=0.0,
+        le=1.0,
+        description=(
+            "img2img denoising strength (0 = no change, 1 = full redraw). "
+            "Default 0.25 sharpens fine detail without altering tile content."
+        ),
+    ),
+) -> Response:
+    """
+    Enhance a satellite tile image using AUTOMATIC1111 Stable Diffusion img2img.
+
+    Requires ``A1111_ENABLED=true`` and ``A1111_URL`` pointing to a running
+    AUTOMATIC1111 Stable Diffusion WebUI server
+    (default: ``http://localhost:7860``).
+
+    The uploaded tile is forwarded to the A1111 ``/sdapi/v1/img2img`` endpoint;
+    the AI-enhanced result is returned as ``image/png``.
+
+    Returns 503 when the feature is disabled, 400 for an empty upload, and
+    502 when the A1111 server itself returns an error.
+    """
+    if not settings.a1111_enabled:
+        return Response(
+            status_code=503,
+            content="AI enhancement unavailable. Set A1111_ENABLED=true and A1111_URL.",
+        )
+
+    raw = await file.read()
+    if not raw:
+        return Response(status_code=400, content="Empty file upload")
+
+    from .a1111 import enhance_image
+
+    try:
+        enhanced = await enhance_image(
+            image_bytes=raw,
+            a1111_url=settings.a1111_url,
+            prompt=prompt or None,
+            denoising_strength=denoising_strength,
+        )
+    except Exception as exc:
+        return Response(status_code=502, content=f"A1111 error: {exc}")
+
+    return Response(content=enhanced, media_type="image/png")
 
 
 # ---------------------------------------------------------------------------

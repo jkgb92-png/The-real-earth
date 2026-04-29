@@ -10,6 +10,7 @@ Run from repo root with:
 import pytest
 from fastapi.testclient import TestClient
 
+import backend.tile_server
 from backend.tile_server import app
 
 
@@ -198,3 +199,93 @@ def test_terminator_cache_returns_same_result():
     r1 = client.get("/api/terminator")
     r2 = client.get("/api/terminator")
     assert r1.json() == r2.json()
+
+
+# ---------------------------------------------------------------------------
+# /api/ai-enhance — AUTOMATIC1111 integration
+# ---------------------------------------------------------------------------
+
+def _make_png(color: tuple = (100, 150, 100), size: tuple = (4, 4)) -> bytes:
+    """Return a minimal in-memory PNG with the given solid colour."""
+    import io
+    from PIL import Image
+
+    buf = io.BytesIO()
+    Image.new("RGB", size, color=color).save(buf, format="PNG")
+    return buf.getvalue()
+
+
+def test_ai_enhance_feature_disabled():
+    """Returns 503 when A1111_ENABLED is false (the default)."""
+    client = TestClient(app)
+    response = client.post(
+        "/api/ai-enhance",
+        files={"file": ("tile.png", _make_png(), "image/png")},
+    )
+    assert response.status_code == 503
+
+
+def test_ai_enhance_empty_file(monkeypatch):
+    """Returns 400 when an empty file is uploaded."""
+    monkeypatch.setattr(backend.tile_server.settings, "a1111_enabled", True)
+    client = TestClient(app)
+    response = client.post(
+        "/api/ai-enhance",
+        files={"file": ("tile.png", b"", "image/png")},
+    )
+    assert response.status_code == 400
+
+
+def test_ai_enhance_success(monkeypatch):
+    """Returns enhanced PNG when A1111 responds successfully."""
+    import base64
+    from unittest.mock import AsyncMock, MagicMock, patch
+
+    tile_bytes = _make_png(color=(100, 150, 100))
+    out_b64 = base64.b64encode(_make_png(color=(120, 160, 120))).decode()
+
+    monkeypatch.setattr(backend.tile_server.settings, "a1111_enabled", True)
+    monkeypatch.setattr(backend.tile_server.settings, "a1111_url", "http://fakeserver")
+
+    mock_resp = MagicMock()
+    mock_resp.raise_for_status = MagicMock()
+    mock_resp.json.return_value = {"images": [out_b64]}
+
+    mock_client_instance = AsyncMock()
+    mock_client_instance.post = AsyncMock(return_value=mock_resp)
+    mock_client_instance.__aenter__ = AsyncMock(return_value=mock_client_instance)
+    mock_client_instance.__aexit__ = AsyncMock(return_value=False)
+
+    with patch("backend.a1111.httpx.AsyncClient", return_value=mock_client_instance):
+        client = TestClient(app)
+        response = client.post(
+            "/api/ai-enhance",
+            files={"file": ("tile.png", tile_bytes, "image/png")},
+        )
+
+    assert response.status_code == 200
+    assert response.headers["content-type"] == "image/png"
+
+
+def test_ai_enhance_a1111_error(monkeypatch):
+    """Returns 502 when the A1111 server raises an error."""
+    from unittest.mock import AsyncMock, patch
+
+    tile_bytes = _make_png()
+
+    monkeypatch.setattr(backend.tile_server.settings, "a1111_enabled", True)
+    monkeypatch.setattr(backend.tile_server.settings, "a1111_url", "http://fakeserver")
+
+    mock_client_instance = AsyncMock()
+    mock_client_instance.post = AsyncMock(side_effect=Exception("Connection refused"))
+    mock_client_instance.__aenter__ = AsyncMock(return_value=mock_client_instance)
+    mock_client_instance.__aexit__ = AsyncMock(return_value=False)
+
+    with patch("backend.a1111.httpx.AsyncClient", return_value=mock_client_instance):
+        client = TestClient(app)
+        response = client.post(
+            "/api/ai-enhance",
+            files={"file": ("tile.png", tile_bytes, "image/png")},
+        )
+
+    assert response.status_code == 502
