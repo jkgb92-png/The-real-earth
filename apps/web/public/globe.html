@@ -152,6 +152,14 @@
         // and extrapolate colours out of range.
         float scatter = exp(-max(altitude, 0.0) / 8500.0);
 
+        // Ground-level fade: when the camera is inside the lower atmosphere
+        // (altitude < 500 m) the post-process atmospheric tint would make the
+        // view blue and hazy.  Fade the effect to zero at ground level so the
+        // surface is rendered clear and undistorted below 500 m, with a smooth
+        // transition back to full atmosphere above 10 000 m.
+        float groundFade = smoothstep(500.0, 10000.0, altitude);
+        scatter *= groundFade;
+
         // Primary blue sky scatter
         vec3 blueScatter = vec3(0.18, 0.36, 0.72);
 
@@ -226,13 +234,34 @@
       }
     })();
 
+    // ── Ground-level POV: collision detection + minimum zoom ─────────────────
+    // Prevent the camera from clipping through the terrain mesh so the user
+    // can orbit at street level without going underground.
+    viewer.scene.screenSpaceCameraController.enableCollisionDetection = true;
+    // Allow the camera to get within 2 m of the surface — close enough for a
+    // true ground-level POV — while collision detection keeps it above terrain.
+    viewer.scene.screenSpaceCameraController.minimumZoomDistance = 2.0;
+
     // ── Adaptive LOD: sharpen terrain mesh when zoomed close ─────────────────
     // CesiumJS tiles increase polygon count as maximumScreenSpaceError decreases.
-    // We interpolate: far (> 200 km) uses SSE=2, very close (< 5 km) uses SSE=0.5.
+    // Breakpoints:
+    //   > 200 km  SSE=2   (global view, normal detail)
+    //   5–200 km  SSE interpolated 2→0.5
+    //   100 m–5 km  SSE=0.5  (city-scale)
+    //   < 100 m   SSE=0.1  (street level — maximum mesh detail)
     viewer.scene.preRender.addEventListener(function () {
       const altKm = viewer.camera.positionCartographic.height / 1000;
-      const sse = altKm > 200 ? 2 : altKm < 5 ? 0.5 : 2 - (1.5 * (200 - altKm) / 195);
-      viewer.scene.globe.maximumScreenSpaceError = Math.max(0.5, sse);
+      let sse;
+      if (altKm > 200) {
+        sse = 2;
+      } else if (altKm < 0.1) {
+        sse = 0.1; // street level — maximum polygon detail
+      } else if (altKm < 5) {
+        sse = 0.5;
+      } else {
+        sse = 2 - (1.5 * (200 - altKm) / 195);
+      }
+      viewer.scene.globe.maximumScreenSpaceError = Math.max(0.1, sse);
     });
 
     // ── Phase 4.2: ISS orbit shell (translucent ellipsoid at ~420 km) ───────

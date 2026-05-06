@@ -139,6 +139,30 @@ function buildGlobeHtml(tileServerUrl: string, cesiumIonToken: string, shader: s
     // Render at native device pixel ratio for crisp imagery on Retina/HiDPI
     // screens.  Cap at 2× to avoid excessive GPU overhead on very high-DPI devices.
     viewer.resolutionScale = Math.min(window.devicePixelRatio || 1, 2);
+
+    // ── Ground-level POV: collision detection + minimum zoom ─────────────────
+    // Prevent the camera from clipping through the terrain mesh so the user
+    // can navigate at street level without going underground.
+    viewer.scene.screenSpaceCameraController.enableCollisionDetection = true;
+    // Allow the camera to get within 2 m of the surface for ground-level POV.
+    viewer.scene.screenSpaceCameraController.minimumZoomDistance = 2.0;
+
+    // ── Adaptive LOD: sharpen terrain mesh at very close range ───────────────
+    // Below 100 m (street level), use SSE=0.1 for maximum polygon detail.
+    viewer.scene.preRender.addEventListener(function () {
+      const altKm = viewer.camera.positionCartographic.height / 1000;
+      let sse;
+      if (altKm > 200) {
+        sse = 2;
+      } else if (altKm < 0.1) {
+        sse = 0.1;
+      } else if (altKm < 5) {
+        sse = 0.5;
+      } else {
+        sse = 2 - (1.5 * (200 - altKm) / 195);
+      }
+      viewer.scene.globe.maximumScreenSpaceError = Math.max(0.1, sse);
+    });
   </script>
 </body>
 </html>`;
