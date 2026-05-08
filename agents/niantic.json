@@ -1,0 +1,29 @@
+[
+  {
+    "id": "niantic-0001",
+    "name": "Old Town Fountain",
+    "description": "A historic fountain popular with visitors.",
+    "type": "pokestop",
+    "location": { "lat": 37.7749, "lng": -122.4194 },
+    "tags": ["historic", "water-feature"],
+    "properties": {
+      "verified": true,
+      "photos": 3
+    },
+    "updatedAt": "2026-05-08T18:29:31Z"
+  },
+  {
+    "id": "niantic-0002",
+    "name": "Riverside Gym",
+    "description": "Friendly community gym with weekly events.",
+    "type": "gym",
+    "location": { "lat": 37.7765, "lng": -122.4172 },
+    "tags": ["gym", "events"],
+    "properties": {
+      "eventSchedule": [
+        { "name": "Raid Sunday", "day": "sunday", "time": "10:00" }
+      ]
+    },
+    "updatedAt": "2026-05-08T18:29:31Z"
+  }
+]
